@@ -12,3 +12,21 @@ cd juice-shop-copy/
 docker build -t custom-juice-shop .
 
 docker run --rm -p 127.0.0.1:3000:3000 --name juice-shop custom-juice-shop
+
+
+
+## Cycle 1 todo:
+
+- Containerized Juice Shop 
+- Challenge board removed (hints and tutorials disabled aswell)
+- determine what AI model/how we want to direct the AI at the site
+    - have the AI be able to perform automated recon/enumeration of site, but not go further.
+- Create a 'master vuln list/document' to base the AI's results off of.
+- AI Chat bot backend (Olama, making it accessible to the dockerized container)
+
+- change the branding of the 'Juice Shop' to a custom format in attempt to trick AI/make it not as obvious to the AI model what it is. (AI Models have likely trained on this site plenty, so are able to pull from that instead of strictly pentesting)
+- written report
+- presentation
+
+
+
