@@ -32,6 +32,7 @@ docker run --rm -p 127.0.0.1:3000:3000 --name juice-shop custom-juice-shop
     - "I Would like a full vulnerability list of the website, so I know how the AI model did in its pentesting"
     - "I would like for there to be a locall llm chatbot on the backend that has vulnerabilities that can be discovered as well"
     - "I would like the AI Pentesting bot to document its findings and be able to invoke relevant tool"
+    - have a seperate LLM that has all the notes/documentation to have it test and verify
 - presentation 
 
 
