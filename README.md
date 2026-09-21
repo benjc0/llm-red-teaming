@@ -29,4 +29,13 @@ docker run --rm -p 127.0.0.1:3000:3000 --name juice-shop custom-juice-shop
 - presentation
 
 
+## AI Chatbot backend
+Local LLM idea:
 
+https://pwning.owasp-juice.shop/companion-guide/snapshot/part1/running.html#_aillm_provider
+
+
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull gemma4:e4b
+
+need to somehow make it accessible to the docker container hosting the website.
