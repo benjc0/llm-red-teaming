@@ -262,27 +262,8 @@
     </a>
   }
 
-  @if (scoreBoardVisible || showGitHubLink) {
+  @if (showGitHubLink) {
     <mat-divider class="divider-spacing"></mat-divider>
-  }
-
-  @if (scoreBoardVisible) {
-    <a mat-list-item routerLink="/score-board" (click)="onToggleSidenav()"
-      aria-label="Open score-board">
-      <mat-icon matListIcon class="fas fa-trophy fa-lg"></mat-icon>
-      <span class="menu-text truncate">
-        {{"TITLE_SCORE_BOARD" | translate}}
-      </span>
-    </a>
-  }
-  @if (!scoreBoardVisible && offerScoreBoardTutorial) {
-    <a mat-list-item (click)="startHackingInstructor()"
-      aria-label="Launch beginners tutorial">
-      <mat-icon>school</mat-icon>
-      <span class="menu-text truncate">
-        {{"BTN_GETTING_STARTED" | translate}}
-      </span>
-    </a>
   }
 
   @if (showGitHubLink) {

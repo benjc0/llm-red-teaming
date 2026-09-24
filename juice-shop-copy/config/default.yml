@@ -78,10 +78,10 @@ application:
       - { uri: 'http://penguin.termina.linux.test:3000', proxy: 'https://localchromeos.owasp-juice.shop' }
       - { uri: 'http://penguin.termina.linux.test:4200', proxy: 'https://localchromeos.owasp-juice.shop' }
 challenges:
-  showSolvedNotifications: true
-  showHints: true
-  showMitigations: true
-  codingChallengesEnabled: solved # Options: never  solved  always
+  showSolvedNotifications: false
+  showHints: false
+  showMitigations: false
+  codingChallengesEnabled: never # Options: never  solved  always
   restrictToTutorialsFirst: false
   overwriteUrlForProductTamperingChallenge: 'https://owasp.slack.com'
   overwriteUrlForCsrfChallenge: 'http://htmledit.squarefree.com'
@@ -94,7 +94,7 @@ challenges:
     - 'promscrape'
     - 'otelcol'
 hackingInstructor:
-  isEnabled: true
+  isEnabled: false
   avatarImage: JuicyBot.png
   hintPlaybackSpeed: normal # Options: faster fast normal slow slower
 products:
