@@ -36,7 +36,11 @@ def main():
         problems.append(f'only in the app: {sorted(set(live) - set(ours))}, '
                         f'only in the answer key: {sorted(set(ours) - set(live))}')
     for key in set(live) & set(ours):
-        disabled_live = live[key]['disabledEnv'] == 'Docker'
+        # `disabledEnv` may arrive as a comma-joined string ("Docker,Windows"),
+        # a list, or null depending on how the app serialises it - handle all three.
+        raw_env = live[key].get('disabledEnv')
+        env_list = raw_env if isinstance(raw_env, list) else (raw_env or '').split(',')
+        disabled_live = 'Docker' in env_list
         if ours[key]['available_in_docker'] == disabled_live:
             problems.append(f'{key}: answer key says available_in_docker={ours[key]["available_in_docker"]}, '
                             f'but the app reports disabledEnv={live[key]["disabledEnv"]}')
