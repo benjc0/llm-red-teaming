@@ -11,7 +11,13 @@ We are utilizing a custom juice shop website, the website code in this repositor
 cd juice-shop-copy/
 docker build -t custom-juice-shop .
 
-docker run --rm -p 127.0.0.1:3000:3000 --name juice-shop custom-juice-shop
+# Generate a per-run grading token. The pentest agent is never given this;
+# only the scoring script (vuln-list/check_live_app.py) uses it to read solve
+# state from the private /grading/solves oracle. The public /api/Challenges
+# list no longer exposes challenge metadata to the agent.
+export APT_GRADING_TOKEN=$(openssl rand -hex 16)
+
+docker run --rm -p 127.0.0.1:3000:3000 -e APT_GRADING_TOKEN --name juice-shop custom-juice-shop
 
 
 
