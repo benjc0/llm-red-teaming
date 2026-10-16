@@ -50,6 +50,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--model", default=None, help="Model id for Claude Code (default: its default).")
     p.add_argument("--run-id", default="", help="Override the generated run id.")
     p.add_argument("--retries", type=int, default=1, help="Validation retries per phase.")
+    p.add_argument("--grading-token", default=None,
+                   help="Token for the server-side solve oracle (/grading/solves). "
+                        "Defaults to the APT_GRADING_TOKEN env var. The agent never receives it.")
     p.add_argument("--unattended", action="store_true",
                    help="Run tools without approval prompts (--dangerously-skip-permissions). SANDBOX ONLY.")
     p.add_argument("--dry-run", action="store_true",
@@ -79,6 +82,7 @@ def main(argv: list[str] | None = None) -> int:
         retries=args.retries,
         unattended=args.unattended,
         dry_run=args.dry_run,
+        grading_token=args.grading_token,
     )
 
     print(f"APT run {cfg.run_id} | target {cfg.target} | mode {cfg.mode} | "

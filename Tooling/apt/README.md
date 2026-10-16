@@ -36,7 +36,19 @@ python3 -m apt --target http://127.0.0.1:3000 --phases all \
 
 Output lands in `runs/<run-id>/`: one directory per phase (with its
 `findings.json` and raw tool output), a `logs/<phase>.jsonl` stream log per
-phase, and a `run.json` manifest.
+phase, and a `run.json` manifest. The manifest records per-phase and total
+token usage and cost, and the same table is printed at the end of the run.
+
+## Grading oracle
+
+After the exploitation phase, the orchestrator queries the target's private
+`/grading/solves` endpoint and stamps `oracle_confirmed` on each exploit
+attempt from the app's own solve state — so a success is server-verified, not
+just claimed by the agent. Pass the token with `--grading-token` or the
+`APT_GRADING_TOKEN` env var (the same value the container was started with).
+The token is **stripped from the agent's environment**, so the agent cannot
+read it or reach the oracle itself. Without a token the step is skipped and
+`oracle_confirmed` is left unset.
 
 ## Safety
 

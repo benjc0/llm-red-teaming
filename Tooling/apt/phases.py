@@ -21,6 +21,7 @@ class PhaseSpec:
     guidance: list[str]
     allowed_tools: list[str]
     max_turns: int = 40
+    optional: bool = False  # if True, a failure is logged but does not abort the pipeline
 
     @property
     def model(self):
@@ -115,6 +116,10 @@ PHASES: dict[Phase, PhaseSpec] = {
         ],
         allowed_tools=_OFFENSIVE_TOOLS,
         max_turns=40,
+        # Reporting and mitigation depend on the exploitation findings, not on
+        # post-exploitation, so a failure here (including a model-side cyber
+        # safeguard block) should not discard those committed deliverables.
+        optional=True,
     ),
     Phase.reporting: PhaseSpec(
         phase=Phase.reporting,
