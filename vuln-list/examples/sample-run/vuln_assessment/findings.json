@@ -1,0 +1,29 @@
+{
+  "apt_schema_version": "1.0",
+  "run_id": "sample-run",
+  "target": "http://127.0.0.1:3000",
+  "phase": "vuln_assessment",
+  "summary": "Identified SQLi in login, an open directory listing, exposed metrics, a reflected input, and a guessed finding that is not real.",
+  "payload": {
+    "vulnerabilities": [
+      {"id": "VULN-001", "title": "SQL injection in login email field", "type": "SQL Injection",
+       "location": "POST /rest/user/login (email param)", "evidence": "' OR 1=1-- returns admin session", "confidence": "high",
+       "owasp_web": "A03:2021 Injection", "cwe": "CWE-89"},
+      {"id": "VULN-002", "title": "Directory listing exposes confidential document", "type": "Sensitive Data Exposure",
+       "location": "GET /ftp", "evidence": "acquisitions.md downloadable from /ftp listing", "confidence": "high",
+       "owasp_web": "A01:2021 Broken Access Control", "cwe": "CWE-548"},
+      {"id": "VULN-003", "title": "Prometheus metrics exposed unauthenticated", "type": "Security Misconfiguration",
+       "location": "GET /metrics", "evidence": "full metrics scrape with no auth", "confidence": "high",
+       "owasp_web": "A05:2021 Security Misconfiguration", "cwe": "CWE-200"},
+      {"id": "VULN-004", "title": "Admin section reachable", "type": "Broken Access Control",
+       "location": "GET /#/administration", "evidence": "admin UI loads", "confidence": "medium",
+       "owasp_web": "A01:2021 Broken Access Control", "cwe": "CWE-425"},
+      {"id": "VULN-005", "title": "Server leaks stack trace on crafted input", "type": "Improper Error Handling",
+       "location": "GET /rest/qwertz", "evidence": "500 with full stack trace", "confidence": "medium",
+       "owasp_web": "A05:2021 Security Misconfiguration", "cwe": "CWE-209"},
+      {"id": "VULN-999", "title": "Suspected buffer overflow in search", "type": "Memory Corruption",
+       "location": "GET /rest/products/search", "evidence": "long query felt slow", "confidence": "low",
+       "owasp_web": null, "cwe": "CWE-120"}
+    ]
+  }
+}
