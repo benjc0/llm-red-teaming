@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>APT — Automated Pentesting Console</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">APT<span class="tag">Automated Pentesting console</span></div>
+    <div class="spacer"></div>
+    <div class="conn" id="conn"><span class="dot"></span><span id="conn-txt">connected</span></div>
+    <button class="primary" id="btn-new">+ New run</button>
+  </header>
+
+  <div class="main">
+    <aside class="sidebar">
+      <h2>Runs</h2>
+      <div id="runlist"></div>
+    </aside>
+    <section class="content" id="content">
+      <div class="empty">Select a run on the left, or start a <b>New run</b>.</div>
+    </section>
+  </div>
+
+  <!-- New run modal -->
+  <div class="modal-back" id="modal-back">
+    <div class="modal">
+      <h2>Start a new APT run</h2>
+      <div class="field">
+        <label>Target URL</label>
+        <input type="text" id="f-target" value="http://127.0.0.1:3000" placeholder="http://127.0.0.1:3000">
+      </div>
+      <div class="field">
+        <label>Phases</label>
+        <div class="checkrow" style="margin-bottom:8px;">
+          <label><input type="radio" name="phmode" value="pick" checked> pick</label>
+          <label><input type="radio" name="phmode" value="all"> all</label>
+        </div>
+        <div class="phasegrid" id="f-phases"></div>
+      </div>
+      <div class="field">
+        <label>Mode</label>
+        <select id="f-mode">
+          <option value="black-box">black-box</option>
+          <option value="white-box">white-box</option>
+        </select>
+      </div>
+      <div class="field" id="f-source-wrap" style="display:none;">
+        <label>Source directory (white-box)</label>
+        <input type="text" id="f-source" placeholder="./clean-source">
+        <div class="hint">A cleaned source tree. Never point this at the full juice-shop-copy — it contains the answer key.</div>
+      </div>
+      <div class="field">
+        <label>Model (optional)</label>
+        <input type="text" id="f-model" placeholder="claude-opus-4-8">
+      </div>
+      <div class="field">
+        <label>Grading token (optional)</label>
+        <input type="text" id="f-token" placeholder="APT_GRADING_TOKEN value">
+        <div class="hint">Sent to the orchestrator via the environment, never to the agent. Enables oracle confirmation of exploits.</div>
+      </div>
+      <div class="field">
+        <label class="checkrow"><input type="checkbox" id="f-unattended"> Unattended (--dangerously-skip-permissions)</label>
+        <div class="warn-box" id="f-warn">Unattended runs execute tools without approval. Only do this inside an isolated sandbox whose network reaches only the target.</div>
+      </div>
+      <div class="form-err" id="f-err"></div>
+      <div class="modal-actions">
+        <button id="btn-cancel">Cancel</button>
+        <button class="primary" id="btn-launch">Launch</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
