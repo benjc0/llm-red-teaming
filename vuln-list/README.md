@@ -15,6 +15,7 @@ This is the answer key for our AI pentests. After a run, we compare the AI's fin
 | `scoring-template.csv` | Copy it for each AI run and fill in the results | Edit the copies, not the template |
 | `check_live_app.py` | Reads solve state from the app's private `/grading/solves` oracle (needs the grading token) and marks exploited rows in a scoring sheet | No |
 | `score_run.py` | Scores a completed APT pipeline run against the answer key; writes `score.csv` and `score-report.md` into the run directory | No |
+| `exec_report.py` | Turns a scored run into an executive remediation report (`exec-report.md` + styled `exec-report.html`); reuses `score_run.py` so the numbers match | No |
 | `examples/sample-run/` | A sample `findings.json` run used to develop and test the scorer | No |
 
 To regenerate after changing the site or `overrides.yml` (needs PyYAML):
@@ -42,6 +43,29 @@ Two things are reliable and automatic; the rest needs a human pass:
 - **Detection is matched, not certain.** The schema gives a reported vulnerability no challenge key, so the scorer matches it to the answer key by its exploit's challenge key when it has one, otherwise by CWE and location. Ambiguous CWE-only matches are listed under "Needs review" rather than counted, and findings that match nothing are listed as candidate false positives. Review those sections and adjust `score.csv` before quoting precision.
 
 Run `python3 vuln-list/score_run.py vuln-list/examples/sample-run` to see the output on the sample.
+
+## Executive remediation report
+
+`score_run.py` produces the technical scoresheet. `exec_report.py` turns the same scored run into a business-facing **executive remediation report** — the artifact a sponsor or manager reads instead of the CSV. It answers "what is our security posture, what was actually proven, and what do we fix first, in what order?"
+
+```bash
+python3 vuln-list/exec_report.py Tooling/runs/<run-id> --mode black-box \
+    --client "Acme Corp" --engagement "Q4 2026 AI Pentest"
+```
+
+It writes two files into the run directory:
+
+- `exec-report.md`: the report in Markdown.
+- `exec-report.html`: the same report as a styled, standalone HTML page (self-contained, no assets to ship) — open it in a browser or hand it to the sponsor for a demo. Pass `--no-html` to skip it.
+
+The report contains an overall posture verdict, a risk-at-a-glance severity breakdown, coverage metrics (and run cost, if `run.json` records it), a **priority remediation roadmap** ranked by business risk, and a residual-risk section listing the highest-impact issues the run did *not* find (the "what a traditional pentester would add" framing).
+
+Two things keep it honest:
+
+- **The numbers can't drift.** `exec_report.py` imports `score_run.score()`, so detection, exploitation and coverage figures are identical to the technical scoresheet — it only *reframes* that result, it does not re-derive it.
+- **Severity ≠ difficulty.** Juice Shop's `difficulty` measures how hard a vuln is to *exploit*. The executive report instead assigns a business-impact **severity** (Critical/High/Medium/Low) from the OWASP Top 10 category, raised when the issue was *proven* exploitable by the oracle. Both are shown, so the two meanings never blur.
+
+Remediation guidance per finding comes from the agent's own mitigation playbook (`mitigation/findings.json`) when that phase ran, falling back to the answer key's `mitigation_url` / `reference_fix`. Run `python3 vuln-list/exec_report.py vuln-list/examples/sample-run --mode black-box` to see it on the sample.
 
 ## Where the data comes from
 
