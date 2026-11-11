@@ -54,3 +54,21 @@ def test_graded_denominator_is_the_core_in_docker_set():
     # Graded set excludes meta, osint, and Docker-disabled entries.
     assert "scoreBoardChallenge" not in result["graded"]      # meta
     assert "xxeFileDisclosureChallenge" not in result["graded"]  # Docker-disabled
+
+
+def test_score_json_matches_compare_contract(tmp_path):
+    import shutil
+    import compare_runs
+
+    run = tmp_path / "sample-run"
+    shutil.copytree(SAMPLE, run)
+    score_run.write_json(run, score_run.score(run), "black-box")
+    loaded = compare_runs.load_score(run)
+
+    assert loaded["kind"] == "ai" and loaded["mode"] == "black-box"
+    m = loaded["metrics"]
+    assert m["exploited"] == 4 and m["false_positives"] == 1
+    assert 0 < m["precision"] <= 1 and 0 < m["f1"] <= 1
+    assert set(loaded["exploited_keys"]) <= set(loaded["detected_keys"])
+    # The comparison aggregation accepts it as-is.
+    assert compare_runs.build_comparison([loaded])["groups"]["ai/black-box"]["trials"] == 1

@@ -1,1 +1,2 @@
 pydantic>=2.6
+pyyaml>=6.0   # scoring (vuln-list/score_run.py); runs score themselves when present

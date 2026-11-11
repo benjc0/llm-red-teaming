@@ -14,7 +14,8 @@ This is the answer key for our AI pentests. After a run, we compare the AI's fin
 | `master-vuln-list.md` | People: the team and the written report | No, it's generated |
 | `scoring-template.csv` | Copy it for each AI run and fill in the results | Edit the copies, not the template |
 | `check_live_app.py` | Reads solve state from the app's private `/grading/solves` oracle (needs the grading token) and marks exploited rows in a scoring sheet | No |
-| `score_run.py` | Scores a completed APT pipeline run against the answer key; writes `score.csv` and `score-report.md` into the run directory | No |
+| `score_run.py` | Scores a completed APT pipeline run against the answer key; writes `score.csv`, `score-report.md` and `score.json` into the run directory | No |
+| `compare_runs.py` | Compares scored AI and free-tools (baseline) runs side by side; writes `comparison.json` + `comparison.md`. The GUI's Compare view reuses it | No |
 | `exec_report.py` | Turns a scored run into an executive remediation report (`exec-report.md` + styled `exec-report.html`); reuses `score_run.py` so the numbers match | No |
 | `examples/sample-run/` | A sample `findings.json` run used to develop and test the scorer | No |
 
@@ -32,10 +33,13 @@ Once the APT orchestrator has written a run to `Tooling/runs/<run-id>/`, score i
 python3 vuln-list/score_run.py Tooling/runs/<run-id> --mode black-box
 ```
 
-This reads the run's `vuln_assessment/findings.json` (what the agent reported) and `exploitation/findings.json` (what it tried), matches them to the answer key, and writes two files into the run directory:
+This reads the run's `vuln_assessment/findings.json` (what the agent reported) and `exploitation/findings.json` (what it tried), matches them to the answer key, and writes three files into the run directory:
 
 - `score.csv`: one row per answer-key entry, with `detected` and `exploited` filled in.
 - `score-report.md`: detection rate, exploitation rate and precision, broken down by OWASP Top 10 and difficulty, plus the list of missed vulnerabilities and candidate false positives.
+- `score.json`: the same numbers, machine-readable, plus run metadata from `run.json` (kind `ai` or `baseline`, cost, duration, tools). `compare_runs.py` and the GUI's **Compare** view read this file.
+
+Both runners (`python -m apt` and `python -m baseline`) score a finished run automatically when PyYAML is installed; the GUI also has a **Score** button.
 
 Two things are reliable and automatic; the rest needs a human pass:
 

@@ -2,3 +2,15 @@ __pycache__/
 *.pyc
 .pytest_cache/
 Tooling/runs/
+
+# Python virtual environment
+.venv/
+venv/
+
+# Generated scoring / comparison artifacts (the scorer and compare tool write
+# these into run and example directories; they are reproducible, not source).
+vuln-list/runs/
+comparisons/
+score.csv
+score.json
+score-report.md

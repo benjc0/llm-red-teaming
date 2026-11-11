@@ -2,7 +2,8 @@
 
 The GUI is read-only over the run directory with exactly one exception: it can
 start a run. It does that by shelling out to the existing orchestrator
-(``python -m apt ...``) -- it does not re-implement any pipeline logic. We track
+(``python -m apt ...``) or the free-tools baseline (``python -m baseline ...``)
+-- it does not re-implement any pipeline logic. We track
 the child process so the UI can show "running / finished / failed" and surface
 the run id the moment it is known.
 
@@ -86,9 +87,15 @@ class Launcher:
         if not (target.startswith("http://") or target.startswith("https://")):
             raise LaunchError("Target must be an http(s) URL.")
 
+        engine = params.get("engine") or "ai"
+        if engine not in ("ai", "baseline"):
+            raise LaunchError("engine must be 'ai' or 'baseline'.")
+
         run_id = (params.get("run_id") or "").strip()
         if not run_id:
             run_id = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+            if engine == "baseline":
+                run_id = "base-" + run_id  # tell the two kinds apart at a glance
         if "/" in run_id or "\\" in run_id:
             raise LaunchError("run_id must not contain path separators.")
 
@@ -104,22 +111,28 @@ class Launcher:
                 raise LaunchError(f"Unknown phase(s): {', '.join(bad)}")
             phases = ",".join(requested)
 
-        # python -m apt, run from the Tooling dir so runs/ lands where the GUI reads.
+        # python -m apt (or -m baseline), run from the Tooling dir so runs/ lands
+        # where the GUI reads. Both CLIs take the same target/phase/mode flags.
         cmd = [
-            sys.executable, "-m", "apt",
+            sys.executable, "-m", "apt" if engine == "ai" else "baseline",
             "--target", target,
             "--phases", phases,
             "--mode", mode,
             "--out", str(self.runs_root),
             "--run-id", run_id,
         ]
-        if params.get("model"):
+        if engine == "ai" and params.get("model"):
             cmd += ["--model", str(params["model"]).strip()]
         if mode == "white-box":
             source = (params.get("source") or "").strip()
             if not source:
                 raise LaunchError("white-box mode needs a source directory.")
             cmd += ["--source", source]
+        if engine == "baseline":
+            # The free-tools runner has no model, retries or permission prompts.
+            if params.get("dry_run"):
+                cmd += ["--dry-run"]
+            return cmd, run_id
         if params.get("retries") is not None:
             cmd += ["--retries", str(int(params["retries"]))]
         if params.get("unattended"):
