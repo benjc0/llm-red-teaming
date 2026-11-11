@@ -14,6 +14,11 @@ Routes
   GET  /api/runs/<id>/raw?path=<rel>       -> a raw artifact file
   GET  /api/phases                         -> canonical phase order + titles
   GET  /api/launches                       -> GUI-started runs and their status
+  GET  /api/tools                          -> free-tool lineup per phase (baseline)
+  GET  /api/compare?runs=a,b               -> AI vs. free-tools comparison (default:
+                                              latest scored AI + baseline runs)
+  GET  /api/compare.md?runs=a,b            -> the same as comparison.md text
+  POST /api/runs/<id>/score                -> score a run against the master vuln list
   POST /api/launches                       -> start a run {target, phases, ...}
   POST /api/launches/<lid>/stop            -> terminate a running launch
 """
@@ -24,6 +29,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from . import compare
 from .launcher import Launcher, LaunchError
 from .runstore import PHASE_ORDER, PHASE_TITLES, RunStore
 
@@ -69,6 +75,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"runs": self._runs_with_live_status()})
             if path == "/api/launches":
                 return self._json(200, {"launches": self.ctx.launcher.active()})
+            if path == "/api/tools":
+                return self._json(200, {"phases": compare.tools_by_phase()})
+            if path in ("/api/compare", "/api/compare.md"):
+                ids = [r for r in ",".join(qs.get("runs") or []).split(",") if r.strip()]
+                ids = [r.strip() for r in ids] or compare.default_selection(self.ctx.store.root)
+                if path.endswith(".md"):
+                    md = compare.markdown(self.ctx.store.root, ids)
+                    return self._raw(200, md.encode("utf-8"), "text/markdown; charset=utf-8")
+                data = compare.build(self.ctx.store.root, ids)
+                data.pop("_comparison", None)
+                return self._json(200, data)
             if path.startswith("/api/runs/"):
                 return self._get_run_subresource(path, qs)
             return self._json(404, {"error": "not found"})
@@ -88,6 +105,12 @@ class Handler(BaseHTTPRequestHandler):
                 except LaunchError as exc:
                     return self._json(400, {"error": str(exc)})
                 return self._json(201, result)
+            if path.startswith("/api/runs/") and path.endswith("/score"):
+                run_id = path[len("/api/runs/"):-len("/score")]
+                try:
+                    return self._json(200, compare.score_run(self.ctx.store.root, run_id))
+                except compare.ScoreError as exc:
+                    return self._json(400, {"error": str(exc)})
             if path.startswith("/api/launches/") and path.endswith("/stop"):
                 lid = path[len("/api/launches/"):-len("/stop")]
                 ok = self.ctx.launcher.stop(lid)

@@ -10,6 +10,8 @@ writes the scored result:
   <run>/score-report.md   detection / exploitation / precision, broken down by
                           OWASP Top 10 and difficulty, plus what was missed and
                           which agent findings matched nothing (candidate false positives)
+  <run>/score.json        the same numbers, machine-readable (read by compare_runs.py
+                          and the GUI's Compare view)
 
 Usage:
   python3 vuln-list/score_run.py vuln-list/examples/sample-run
@@ -271,6 +273,86 @@ def write_report(run_dir: Path, result, mode: str):
     return out
 
 
+def _ratio(num: int, den: int):
+    return round(num / den, 4) if den else None
+
+
+def _buckets(keys_hit: set[str], answer_key, graded, field) -> dict:
+    hit, total = breakdown(keys_hit, answer_key, graded, field)
+    return {str(b): {"hit": hit[b], "total": total[b], "rate": _ratio(hit[b], total[b])}
+            for b in sorted(total, key=lambda b: str(b))}
+
+
+def build_score_json(run_dir: Path, result, mode: str) -> dict:
+    """Machine-readable score (what compare_runs.py and the GUI read).
+
+    Run metadata (kind, model, tools, cost, duration) comes from run.json, so a
+    baseline run and an AI run land in the same shape."""
+    from datetime import datetime, timezone
+
+    manifest = {}
+    try:
+        manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        pass
+
+    answer_key, graded = result["answer_key"], result["graded"]
+    detected, exploited = result["detected"] & graded, result["exploited"] & graded
+    matched = sum(1 for r in result["review_rows"] if r[4])
+    reported = result["reported_count"]
+    precision = _ratio(matched, reported)
+    recall = _ratio(len(detected), len(graded))
+    f1 = (round(2 * precision * recall / (precision + recall), 4)
+          if precision and recall else (0.0 if precision is not None and recall is not None else None))
+    duration = manifest.get("duration_s")
+    if duration is None and manifest.get("phases"):
+        durs = [p.get("duration_s") for p in manifest["phases"] if p.get("duration_s") is not None]
+        duration = round(sum(durs), 2) if durs else None
+
+    return {
+        "run_id": run_dir.name,
+        "kind": manifest.get("kind") or ("baseline" if run_dir.name.startswith("base-") else "ai"),
+        "mode": mode if mode != "unspecified" else (manifest.get("mode") or mode),
+        "model": manifest.get("model"),
+        "tools": manifest.get("tools"),
+        "scored_at": datetime.now(timezone.utc).isoformat(),
+        "graded_total": len(graded),
+        "reported_count": reported,
+        "metrics": {
+            "detection_rate": recall,
+            "exploitation_rate": _ratio(len(exploited), len(graded)),
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "detected": len(detected),
+            "exploited": len(exploited),
+            "matched_findings": matched,
+            "false_positives": sum(1 for r in result["review_rows"] if r[2] == "unmatched"),
+            "needs_review": sum(1 for r in result["review_rows"] if r[2] == "cwe-only"),
+        },
+        "by_owasp": _buckets(result["exploited"], answer_key, graded, "owasp_top10"),
+        "by_difficulty": _buckets(result["exploited"], answer_key, graded, "difficulty"),
+        "detection_by_owasp": _buckets(result["detected"], answer_key, graded, "owasp_top10"),
+        "detection_by_difficulty": _buckets(result["detected"], answer_key, graded, "difficulty"),
+        "detected_keys": sorted(result["detected"]),
+        "exploited_keys": sorted(result["exploited"]),
+        "missed_keys": sorted(graded - result["detected"]),
+        "usage_total": manifest.get("usage_total"),
+        "duration_s": duration,
+        "phases": {p["phase"]: {"duration_s": p.get("duration_s"),
+                                "cost_usd": (p.get("usage") or {}).get("cost_usd"),
+                                "tools": p.get("tools")}
+                   for p in manifest.get("phases", []) if p.get("phase")},
+    }
+
+
+def write_json(run_dir: Path, result, mode: str) -> Path:
+    out = run_dir / "score.json"
+    out.write_text(json.dumps(build_score_json(run_dir, result, mode), indent=2) + "\n",
+                   encoding="utf-8")
+    return out
+
+
 def _precision(matched: int, total: int) -> str:
     if not total:
         return "n/a"
@@ -286,6 +368,7 @@ def main():
     result = score(args.run_dir)
     csv_path = write_csv(args.run_dir, result)
     report_path = write_report(args.run_dir, result, args.mode)
+    json_path = write_json(args.run_dir, result, args.mode)
 
     g = result["graded"]
     print(f"Graded: {len(g)} | detected {len(result['detected'] & g)} "
@@ -293,6 +376,7 @@ def main():
           f"| reported {result['reported_count']}")
     print(f"Wrote {csv_path}")
     print(f"Wrote {report_path}")
+    print(f"Wrote {json_path}")
 
 
 if __name__ == "__main__":

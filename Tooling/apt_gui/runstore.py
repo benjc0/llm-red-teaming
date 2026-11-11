@@ -93,8 +93,19 @@ class RunStore:
         vuln = _read_json(run_dir / "vuln_assessment" / "findings.json")
         if vuln:
             total_vulns = len((vuln.get("payload") or {}).get("vulnerabilities") or [])
+        score = _read_json(run_dir / "score.json")
+        metrics = (score or {}).get("metrics") or {}
+        kind = (manifest or {}).get("kind") or (score or {}).get("kind") \
+            or ("baseline" if run_dir.name.startswith("base-") else "ai")
         return {
             "run_id": run_dir.name,
+            "kind": kind,
+            "scored": score is not None,
+            # The scorer needs vuln-assessment or exploitation findings.
+            "scorable": any((run_dir / p / "findings.json").is_file()
+                            for p in ("vuln_assessment", "exploitation")),
+            "detection_rate": metrics.get("detection_rate"),
+            "exploitation_rate": metrics.get("exploitation_rate"),
             "target": (manifest or {}).get("target")
             or self._any_target(run_dir),
             "mode": (manifest or {}).get("mode"),
@@ -258,6 +269,12 @@ class RunStore:
             # bookkeeping, not activity -- there are hundreds and they bury the
             # real tool calls. Drop them from the stream.
             return []
+        if isinstance(etype, str) and (etype.startswith("tool_") or etype.startswith("oracle")) \
+                and "tool" in e:
+            # Baseline (free-tools) runner log: one record per tool step.
+            return [{"_type": "baseline", "event": etype, "tool": e.get("tool"),
+                     "text": str(e.get("text") or "")[:1500],
+                     "is_error": etype in ("tool_error", "tool_prep_error", "tool_skip")}]
         if etype == "rate_limit_event":
             out.append({"_type": "rate_limit", "text": "rate limit event"})
         elif etype == "result":

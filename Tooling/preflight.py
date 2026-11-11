@@ -125,7 +125,63 @@ def main() -> int:
         else:
             warn(f"Optional tool missing: {tool} (install later; not required for preflight)")
 
+    # --- 5. Python packages for this interpreter ------------------------------
+    check_python_packages()
+
+    # --- 6. Memory headroom (warn only) -------------------------------------
+    check_memory()
+
     return _summary()
+
+
+def check_python_packages() -> None:
+    """The pipelines run under *this* interpreter, so check its packages: a
+    system python3 without pydantic is the usual cause of a failed first run."""
+    import importlib.util
+    venv_hint = ("Activate the project venv first (source ../.venv/bin/activate from "
+                 "Tooling/), or: pip install -r requirements.txt")
+    if importlib.util.find_spec("pydantic") is None:
+        fail(f"pydantic is not installed for {sys.executable}. {venv_hint}")
+    else:
+        ok(f"pydantic available ({sys.executable})")
+    if importlib.util.find_spec("yaml") is None:
+        warn("PyYAML missing: runs will not be scored automatically, so they won't "
+             f"appear in the Compare view. {venv_hint}")
+    else:
+        ok("PyYAML available (runs score themselves)")
+
+
+def _meminfo() -> dict[str, int] | None:
+    """MemTotal / MemAvailable / SwapTotal in MiB, from /proc/meminfo (Linux only)."""
+    try:
+        text = open("/proc/meminfo", encoding="utf-8").read()
+    except OSError:
+        return None
+    out = {}
+    for line in text.splitlines():
+        key, _, rest = line.partition(":")
+        if key in ("MemTotal", "MemAvailable", "SwapTotal"):
+            out[key] = int(rest.split()[0]) // 1024
+    return out
+
+
+def check_memory() -> None:
+    """Warn when a full run is likely to exhaust RAM. A free-tools run peaks
+    around 2 GiB (ZAP is capped at 1.5 GiB) on top of the target container
+    (~0.5 GiB) and Claude Code (~0.5 GiB per headless phase)."""
+    mem = _meminfo()
+    if mem is None:
+        return  # not Linux; nothing to check
+    avail, total, swap = mem.get("MemAvailable", 0), mem.get("MemTotal", 0), mem.get("SwapTotal", 0)
+    msg = f"{avail / 1024:.1f} GiB of {total / 1024:.1f} GiB RAM available, swap {swap / 1024:.1f} GiB"
+    if avail < 2560:
+        warn(f"Low memory: {msg}. Close other apps and run the AI and free-tools runs "
+             "one at a time, never together.")
+    else:
+        ok(f"Memory: {msg}")
+    if swap == 0:
+        warn("No swap. When RAM runs out the VM can freeze instead of killing one process. "
+             "A 4 GiB swap file is a cheap safety net (see Tooling/README.md).")
 
 
 def _summary() -> int:
