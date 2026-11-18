@@ -19,14 +19,15 @@ Outputs, written into the run directory:
   <run>/exec-report.html   the same report as a styled, standalone HTML page
                            (self-contained; open in a browser or hand to a sponsor)
 
-Inputs it reads from the run directory (optional, except that the scorer needs
-at least one of the vulnerability-assessment or exploitation findings files):
+Inputs it reads from the run directory (all optional except the two findings
+files the scorer needs):
 
   vuln_assessment/findings.json   what the agent reported   (scorer input)
   exploitation/findings.json      what the agent confirmed  (scorer input)
   mitigation/findings.json        the agent's remediation playbook, if the
                                   mitigation phase ran (its recommendations are
                                   merged into the roadmap)
+  reporting/findings.json         the agent's own summary, if present
   run.json                        the run manifest (cost, tokens, model), if present
 
 Usage:
@@ -41,28 +42,29 @@ from __future__ import annotations
 import argparse
 import html
 import json
-from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 # Reuse the technical scorer so the executive numbers can never drift from it.
 import score_run
 
-_SEVERITY_ORDER = ("Critical", "High", "Medium", "Low")
-_SEVERITY_RANK = {severity: rank for rank, severity in enumerate(_SEVERITY_ORDER)}
-_SEV_COLOR = {
-    "Critical": "#b4232a",
-    "High": "#d1621a",
-    "Medium": "#b8900a",
-    "Low": "#5a7d3a",
-}
+HERE = Path(__file__).resolve().parent
 
-# Higher values represent more business damage if the category is abused.
+
+# --- severity / business-risk model ---------------------------------------
+#
+# Juice Shop's `difficulty` (1-6) measures how hard a vuln is to *exploit*, not
+# how much damage it does. An executive cares about damage. So we assign an
+# impact tier per OWASP Top 10 category (the industry-standard severity proxy)
+# and combine it with whether the exploit was actually *proven* by the oracle.
+# Proven-exploitable issues outrank merely-potential ones of the same impact,
+# because the engagement already demonstrated them end to end.
+
+# Impact tier per OWASP 2021 category. Higher = more business damage if abused.
 _OWASP_IMPACT = {
-    "A01": 4,  # Broken Access Control — direct data/authz compromise
+    "A01": 4,  # Broken Access Control  — direct data/authz compromise
     "A02": 4,  # Cryptographic Failures — exposure of protected data
-    "A03": 5,  # Injection — often full data/system compromise
+    "A03": 5,  # Injection              — often full data/system compromise
     "A04": 3,  # Insecure Design
     "A05": 3,  # Security Misconfiguration
     "A06": 3,  # Vulnerable Components
@@ -72,27 +74,28 @@ _OWASP_IMPACT = {
     "A10": 4,  # SSRF
 }
 
+# Label and ordering for the four severity bands we present to the reader.
+_SEVERITY_ORDER = ["Critical", "High", "Medium", "Low"]
+_SEVERITY_RANK = {s: i for i, s in enumerate(_SEVERITY_ORDER)}
 
-# --- severity and business-risk model ------------------------------------
-#
-# Juice Shop's `difficulty` (1-6) measures how hard a vulnerability is to
-# exploit, not how much damage it can cause. Severity combines OWASP-based
-# impact with whether the exploit was proven by the oracle.
 
-def _owasp_code(entry: Mapping[str, Any]) -> str | None:
+def _owasp_code(entry) -> str | None:
     owasp = entry.get("owasp_top10")
     if not owasp:
         return None
-    return owasp.split(":", 1)[0].strip().upper()
+    return owasp.split(":", 1)[0].strip().upper()  # "A03:2021 Injection" -> "A03"
 
 
-def impact_tier(entry: Mapping[str, Any]) -> int:
-    """Return the 1-5 business-impact tier for an answer-key entry."""
+def impact_tier(entry) -> int:
+    """1-5 business-impact tier for an answer-key entry, from its OWASP category."""
     return _OWASP_IMPACT.get(_owasp_code(entry) or "", 3)
 
 
-def severity_of(entry: Mapping[str, Any], proven: bool) -> str:
-    """Map impact and exploit proof to Critical, High, Medium, or Low."""
+def severity_of(entry, proven: bool) -> str:
+    """Map (impact tier, proven?) to one of Critical/High/Medium/Low.
+
+    Proven exploitation raises the floor: an issue the engagement actually
+    demonstrated is never reported below High if it carries real impact."""
     tier = impact_tier(entry)
     if proven:
         if tier >= 5:
@@ -100,7 +103,9 @@ def severity_of(entry: Mapping[str, Any], proven: bool) -> str:
         if tier >= 3:
             return "High"
         return "Medium"
-
+    # Potential (reported/known but not oracle-confirmed in this run).
+    if tier >= 5:
+        return "High"
     if tier >= 4:
         return "High"
     if tier >= 3:
@@ -108,10 +113,9 @@ def severity_of(entry: Mapping[str, Any], proven: bool) -> str:
     return "Low"
 
 
-# --- input loading --------------------------------------------------------
+# --- gather ---------------------------------------------------------------
 
-
-def _load_json(path: Path) -> dict[str, Any] | None:
+def _load_json(path: Path) -> dict | None:
     if not path.is_file():
         return None
     try:
@@ -120,7 +124,7 @@ def _load_json(path: Path) -> dict[str, Any] | None:
         return None
 
 
-def load_mitigations(run_dir: Path) -> dict[str, dict[str, Any]]:
+def load_mitigations(run_dir: Path) -> dict[str, dict]:
     """Agent's remediation playbook keyed by vuln_id, if the mitigation phase ran."""
     data = _load_json(run_dir / "mitigation" / "findings.json")
     if not data:
@@ -129,25 +133,33 @@ def load_mitigations(run_dir: Path) -> dict[str, dict[str, Any]]:
     return {it["vuln_id"]: it for it in items if it.get("vuln_id")}
 
 
-def load_manifest(run_dir: Path) -> dict[str, Any]:
+def load_manifest(run_dir: Path) -> dict:
     """Cost/token/model info from the run manifest, best-effort."""
     data = _load_json(run_dir / "run.json") or {}
-    manifest = {}
+    out = {}
     for k in ("model", "mode", "target", "total_cost_usd", "total_tokens", "cost_usd", "cost"):
         if k in data:
-            manifest[k] = data[k]
-    if "total_cost_usd" not in manifest:
+            out[k] = data[k]
+    # Normalize a couple of likely spellings.
+    if "total_cost_usd" not in out:
         for alt in ("cost_usd", "cost"):
-            if alt in manifest:
-                manifest["total_cost_usd"] = manifest[alt]
+            if alt in out:
+                out["total_cost_usd"] = out[alt]
                 break
-    return manifest
+    return out
+
+
+def vuln_location_by_confirmed_key(run_dir: Path) -> dict[str, str]:
+    """challenge_key -> a human location string, from the reported vulns, for color."""
+    vp = _load_json(run_dir / "vuln_assessment" / "findings.json") or {}
+    reported = (vp.get("payload") or {}).get("vulnerabilities") or []
+    # We can only map by vuln_id -> location here; the scorer owns key<-vuln_id.
+    return {v["id"]: v.get("location", "") for v in reported if v.get("id")}
 
 
 # --- build the ranked finding set -----------------------------------------
 
-
-def build_findings(run_dir: Path, result: Mapping[str, Any]) -> list[dict[str, Any]]:
+def build_findings(run_dir: Path, result: dict):
     """Produce the ranked list of answer-key-backed findings for the report.
 
     Each item: key, name, category, owasp, difficulty, severity, proven(bool),
@@ -158,8 +170,10 @@ def build_findings(run_dir: Path, result: Mapping[str, Any]) -> list[dict[str, A
     exploited = result["exploited"]
 
     mitigations = load_mitigations(run_dir)
+    loc_by_vuln = vuln_location_by_confirmed_key(run_dir)
 
-    # Connect attempted vuln IDs to challenge keys for matching playbook advice.
+    # vuln_id <-> challenge_key the oracle confirmed (recompute cheaply from the
+    # exploitation phase, same rule the scorer uses).
     exploit_phase = _load_json(run_dir / "exploitation" / "findings.json")
     key_for_vuln: dict[str, str] = {}
     rec_for_key: dict[str, dict] = {}
@@ -197,21 +211,11 @@ def build_findings(run_dir: Path, result: Mapping[str, Any]) -> list[dict[str, A
         })
 
     # Rank: severity band, then proven before potential, then impact tier.
-    findings.sort(
-        key=lambda finding: (
-            _SEVERITY_RANK[finding["severity"]],
-            not finding["proven"],
-            -finding["impact"],
-            finding["name"],
-        )
-    )
+    findings.sort(key=lambda f: (_SEVERITY_RANK[f["severity"]], not f["proven"], -f["impact"], f["name"]))
     return findings
 
 
-def posture(
-    result: Mapping[str, Any],
-    findings: Sequence[Mapping[str, Any]],
-) -> tuple[str, str]:
+def posture(result: dict, findings: list) -> tuple[str, str]:
     """A one-word posture label and a one-paragraph plain-language verdict."""
     graded = result["graded"]
     exploited = result["exploited"] & graded
@@ -255,28 +259,14 @@ def posture(
 
 # --- render: Markdown ------------------------------------------------------
 
-
-def _sev_counts(findings: Sequence[Mapping[str, Any]]) -> dict[str, int]:
-    counts = {severity: 0 for severity in _SEVERITY_ORDER}
-    for finding in findings:
-        counts[finding["severity"]] += 1
+def _sev_counts(findings: list) -> dict[str, int]:
+    counts = {s: 0 for s in _SEVERITY_ORDER}
+    for f in findings:
+        counts[f["severity"]] += 1
     return counts
 
 
-def _missed_keys(result: Mapping[str, Any]) -> list[str]:
-    """Return undetected graded keys, ordered by business impact."""
-    answer_key = result["answer_key"]
-    return sorted(
-        result["graded"] - result["detected"],
-        key=lambda key: (-impact_tier(answer_key[key]), answer_key[key]["name"]),
-    )
-
-
-def render_markdown(
-    result: Mapping[str, Any],
-    findings: Sequence[Mapping[str, Any]],
-    meta: Mapping[str, Any],
-) -> str:
+def render_markdown(run_dir: Path, result: dict, findings: list, meta: dict) -> str:
     graded = result["graded"]
     detected = result["detected"] & graded
     exploited = result["exploited"] & graded
@@ -288,158 +278,132 @@ def render_markdown(
     det_pct = f"{100 * len(detected) / len(graded):.0f}%" if graded else "n/a"
     exp_pct = f"{100 * len(exploited) / len(graded):.0f}%" if graded else "n/a"
 
-    lines = ["# Executive Remediation Report", ""]
+    L = []
+    L.append(f"# Executive Remediation Report")
+    L.append("")
     if meta.get("client"):
-        lines.append(f"**Client:** {meta['client']}  ")
+        L.append(f"**Client:** {meta['client']}  ")
     if meta.get("engagement"):
-        lines.append(f"**Engagement:** {meta['engagement']}  ")
-    lines.extend([
-        f"**Target:** {manifest.get('target', 'authorized web application')}  ",
-        f"**Assessment mode:** {meta['mode']}  ",
-        "**Method:** Autonomous AI-driven penetration test (APT pipeline)  ",
-        f"**Date:** {today}",
-        "",
-        "---",
-        "",
-    ])
+        L.append(f"**Engagement:** {meta['engagement']}  ")
+    L.append(f"**Target:** {manifest.get('target', 'authorized web application')}  ")
+    L.append(f"**Assessment mode:** {meta['mode']}  ")
+    L.append(f"**Method:** Autonomous AI-driven penetration test (APT pipeline)  ")
+    L.append(f"**Date:** {today}")
+    L.append("")
+    L.append("---")
+    L.append("")
 
     # Executive summary
-    lines.extend([
-        "## Executive summary",
-        "",
-        f"**Overall security posture: {label}.**",
-        "",
-        verdict,
-        "",
+    L.append("## Executive summary")
+    L.append("")
+    L.append(f"**Overall security posture: {label}.**")
+    L.append("")
+    L.append(verdict)
+    L.append("")
+    L.append(
         "This assessment was carried out by an autonomous AI agent working through "
         "the standard penetration-test phases. Every exploited issue listed here was "
         "independently confirmed by the application's own records — it reflects what "
-        "the agent actually achieved, not what it merely suspected.",
-        "",
-    ])
+        "the agent actually achieved, not what it merely suspected.")
+    L.append("")
 
     # Risk at a glance
-    lines.extend([
-        "## Risk at a glance",
-        "",
-        "| Severity | Findings | Of which proven exploitable |",
-        "|---|---|---|",
-    ])
-    for severity in _SEVERITY_ORDER:
-        proven = sum(
-            1
-            for finding in findings
-            if finding["severity"] == severity and finding["proven"]
-        )
-        lines.append(f"| {severity} | {counts[severity]} | {proven} |")
-    lines.extend([
-        "",
-        "| Coverage metric | Result | What it means |",
-        "|---|---|---|",
-        f"| Issues confirmed exploitable | {len(exploited)} of {len(graded)} ({exp_pct}) | "
-        "Proven end to end against the live target |",
-        f"| Issues identified | {len(detected)} of {len(graded)} ({det_pct}) | "
-        "Flagged by the agent as likely vulnerable |",
-    ])
+    L.append("## Risk at a glance")
+    L.append("")
+    L.append("| Severity | Findings | Of which proven exploitable |")
+    L.append("|---|---|---|")
+    for s in _SEVERITY_ORDER:
+        proven = sum(1 for f in findings if f["severity"] == s and f["proven"])
+        L.append(f"| {s} | {counts[s]} | {proven} |")
+    L.append("")
+    L.append("| Coverage metric | Result | What it means |")
+    L.append("|---|---|---|")
+    L.append(f"| Issues confirmed exploitable | {len(exploited)} of {len(graded)} ({exp_pct}) | "
+             "Proven end to end against the live target |")
+    L.append(f"| Issues identified | {len(detected)} of {len(graded)} ({det_pct}) | "
+             "Flagged by the agent as likely vulnerable |")
     if manifest.get("total_cost_usd") is not None:
-        lines.append(
-            f"| Cost of this assessment | ${float(manifest['total_cost_usd']):.2f} | "
-            "Compute cost of the full automated run |"
-        )
-    lines.append("")
+        L.append(f"| Cost of this assessment | ${float(manifest['total_cost_usd']):.2f} | "
+                 "Compute cost of the full automated run |")
+    L.append("")
 
     # Priority remediation roadmap
-    lines.extend([
-        "## Priority remediation roadmap",
-        "",
+    L.append("## Priority remediation roadmap")
+    L.append("")
+    L.append(
         "Findings are ordered by business risk — highest first. *Proven* means the "
         "engagement exploited the issue end to end; *potential* means it was identified "
-        "but not confirmed in this run. Address proven, higher-severity items first.",
-        "",
-    ])
+        "but not confirmed in this run. Address proven, higher-severity items first.")
+    L.append("")
     if not findings:
-        lines.extend(["_No answer-key-backed findings were produced for this run._", ""])
+        L.append("_No answer-key-backed findings were produced for this run._")
+        L.append("")
     else:
-        for index, finding in enumerate(findings, 1):
-            status = "Proven exploitable" if finding["proven"] else "Potential"
-            lines.extend([
-                f"### {index}. {finding['name']} — {finding['severity']}",
-                "",
-                f"- **Status:** {status}",
-            ])
-            if finding["owasp"]:
-                lines.append(
-                    f"- **Category:** {finding['owasp']} ({finding['category']})"
-                )
+        for i, f in enumerate(findings, 1):
+            status = "Proven exploitable" if f["proven"] else "Potential"
+            L.append(f"### {i}. {f['name']} — {f['severity']}")
+            L.append("")
+            L.append(f"- **Status:** {status}")
+            if f["owasp"]:
+                L.append(f"- **Category:** {f['owasp']} ({f['category']})")
             else:
-                lines.append(f"- **Category:** {finding['category']}")
-            lines.append(
-                f"- **Exploitation difficulty:** {finding['difficulty']}/6"
-            )
-            recommendation = finding.get("agent_recommendation")
-            if recommendation:
-                lines.append(f"- **Recommended remediation:** {recommendation}")
-            elif finding.get("reference"):
-                lines.append(
-                    f"- **Recommended remediation:** {finding['reference']}"
-                )
+                L.append(f"- **Category:** {f['category']}")
+            L.append(f"- **Exploitation difficulty:** {f['difficulty']}/6")
+            rec = f.get("agent_recommendation")
+            if rec:
+                L.append(f"- **Recommended remediation:** {rec}")
+            elif f.get("reference"):
+                L.append(f"- **Recommended remediation:** {f['reference']}")
             else:
-                lines.append(
-                    "- **Recommended remediation:** See the technical report for "
-                    "detailed guidance."
-                )
-            lines.append("")
+                L.append("- **Recommended remediation:** See the technical report for "
+                         "detailed guidance.")
+            L.append("")
 
     # What a human would add
-    missed = _missed_keys(result)
-    lines.extend([
-        "## Residual risk — what this assessment did not cover",
-        "",
-    ])
+    missed = sorted(graded - result["detected"],
+                    key=lambda k: (-impact_tier(result["answer_key"][k]),
+                                   result["answer_key"][k]["name"]))
+    L.append("## Residual risk — what this assessment did not cover")
+    L.append("")
     if missed:
-        lines.extend([
+        L.append(
             f"The engagement did not identify {len(missed)} known issue"
             f"{'s' if len(missed) != 1 else ''} in the assessed set. A traditional "
             "pentester, or a follow-up run, would additionally examine these. The "
-            "highest-impact examples:",
-            "",
-        ])
-        for key in missed[:8]:
-            entry = result["answer_key"][key]
-            lines.append(
-                f"- **{entry['name']}** — "
-                f"{entry.get('owasp_top10') or entry['category']}"
-            )
+            "highest-impact examples:")
+        L.append("")
+        for k in missed[:8]:
+            e = result["answer_key"][k]
+            L.append(f"- **{e['name']}** — {e.get('owasp_top10') or e['category']}")
         if len(missed) > 8:
-            lines.append(
-                f"- …and {len(missed) - 8} more (see the technical scoresheet)."
-            )
+            L.append(f"- …and {len(missed) - 8} more (see the technical scoresheet).")
     else:
-        lines.append("The engagement identified every issue in the assessed set.")
-    lines.append("")
+        L.append("The engagement identified every issue in the assessed set.")
+    L.append("")
 
-    lines.extend([
-        "---",
-        "",
+    L.append("---")
+    L.append("")
+    L.append(
         "*This executive report is generated from the same scored results as the "
         "technical scoresheet (`score.csv` / `score-report.md`); the figures are "
         "identical. Severity reflects business impact (OWASP category) combined with "
         "whether the issue was proven exploitable, and is distinct from Juice Shop's "
-        "exploitation-difficulty rating.*",
-        "",
-    ])
-    return "\n".join(lines)
+        "exploitation-difficulty rating.*")
+    L.append("")
+    return "\n".join(L)
 
 
 # --- render: HTML ----------------------------------------------------------
 
+_SEV_COLOR = {
+    "Critical": "#b4232a",
+    "High": "#d1621a",
+    "Medium": "#b8900a",
+    "Low": "#5a7d3a",
+}
 
-def render_html(
-    run_dir: Path,
-    result: Mapping[str, Any],
-    findings: Sequence[Mapping[str, Any]],
-    meta: Mapping[str, Any],
-) -> str:
+
+def render_html(run_dir: Path, result: dict, findings: list, meta: dict) -> str:
     graded = result["graded"]
     detected = result["detected"] & graded
     exploited = result["exploited"] & graded
@@ -450,8 +414,8 @@ def render_html(
     det_pct = f"{100 * len(detected) / len(graded):.0f}%" if graded else "n/a"
     exp_pct = f"{100 * len(exploited) / len(graded):.0f}%" if graded else "n/a"
 
-    def esc(value: Any) -> str:
-        return html.escape(str(value))
+    def esc(s):
+        return html.escape(str(s))
 
     # Severity bar segments (only non-empty bands).
     total = sum(counts.values()) or 1
@@ -487,7 +451,9 @@ def render_html(
         <div class="finding-rec"><strong>Remediation:</strong> {esc(rec)}</div>
       </div>""")
 
-    missed = _missed_keys(result)
+    missed = sorted(graded - result["detected"],
+                    key=lambda k: (-impact_tier(result["answer_key"][k]),
+                                   result["answer_key"][k]["name"]))
     missed_items = "".join(
         f"<li><strong>{esc(result['answer_key'][k]['name'])}</strong> — "
         f"{esc(result['answer_key'][k].get('owasp_top10') or result['answer_key'][k]['category'])}</li>"
@@ -612,10 +578,9 @@ def render_html(
 """
 
 
-# --- command line ----------------------------------------------------------
+# --- main ------------------------------------------------------------------
 
-
-def main() -> None:
+def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("run_dir", type=Path, help="run directory, e.g. Tooling/runs/<run-id>")
@@ -640,7 +605,7 @@ def main() -> None:
 
     findings = build_findings(args.run_dir, result)
 
-    md = render_markdown(result, findings, meta)
+    md = render_markdown(args.run_dir, result, findings, meta)
     md_path = args.run_dir / "exec-report.md"
     md_path.write_text(md, encoding="utf-8")
     print(f"Wrote {md_path}")

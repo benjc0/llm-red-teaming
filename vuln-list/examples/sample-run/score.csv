@@ -1,0 +1,117 @@
+key,name,category,cwe,owasp_top10,difficulty,relevance,available_in_docker,graded,detected,exploited
+web3SandboxChallenge,Web3 Sandbox,Broken Access Control,CWE-284,A01:2021 Broken Access Control,1,core,yes,yes,no,no
+aiDebuggingChallenge,AI Debugging,Broken Access Control,CWE-602,A01:2021 Broken Access Control,2,core,yes,yes,no,no
+adminSectionChallenge,Admin Section,Broken Access Control,CWE-425,A01:2021 Broken Access Control,2,core,yes,yes,yes,no
+feedbackChallenge,Five-Star Feedback,Broken Access Control,CWE-284,A01:2021 Broken Access Control,2,core,yes,yes,no,no
+basketAccessChallenge,View Basket,Broken Access Control,CWE-639,A01:2021 Broken Access Control,2,core,yes,yes,no,no
+csrfChallenge,CSRF,Broken Access Control,CWE-352,A01:2021 Broken Access Control,3,core,yes,yes,no,no
+forgedFeedbackChallenge,Forged Feedback,Broken Access Control,CWE-639,A01:2021 Broken Access Control,3,core,yes,yes,no,no
+forgedReviewChallenge,Forged Review,Broken Access Control,CWE-639,A01:2021 Broken Access Control,3,core,yes,yes,no,no
+basketManipulateChallenge,Manipulate Basket,Broken Access Control,CWE-639,A01:2021 Broken Access Control,3,core,yes,yes,no,no
+changeProductChallenge,Product Tampering,Broken Access Control,CWE-284,A01:2021 Broken Access Control,3,core,yes,yes,no,no
+easterEggLevelOneChallenge,Easter Egg,Broken Access Control,CWE-158,A01:2021 Broken Access Control,4,core,yes,yes,no,no
+ssrfChallenge,SSRF,Broken Access Control,CWE-918,A10:2021 Server-Side Request Forgery,6,core,yes,yes,no,no
+captchaBypassChallenge,CAPTCHA Bypass,Broken Anti Automation,CWE-804,A04:2021 Insecure Design,3,core,yes,yes,no,no
+extraLanguageChallenge,Extra Language,Broken Anti Automation,CWE-799,A04:2021 Insecure Design,5,meta,yes,no,no,no
+resetPasswordMortyChallenge,Reset Morty's Password,Broken Anti Automation,CWE-640,A04:2021 Insecure Design,5,osint,yes,no,no,no
+timingAttackChallenge,Multiple Likes,Broken Anti Automation,CWE-362,A04:2021 Insecure Design,6,core,yes,yes,no,no
+weakPasswordChallenge,Password Strength,Broken Authentication,CWE-521,A07:2021 Identification and Authentication Failures,2,core,yes,yes,no,no
+resetPasswordBjoernOwaspChallenge,Bjoern's Favorite Pet,Broken Authentication,CWE-640,A07:2021 Identification and Authentication Failures,3,osint,yes,no,no,no
+ghostLoginChallenge,GDPR Data Erasure,Broken Authentication,CWE-287,A07:2021 Identification and Authentication Failures,3,core,yes,yes,no,no
+resetPasswordJimChallenge,Reset Jim's Password,Broken Authentication,CWE-640,A07:2021 Identification and Authentication Failures,3,osint,yes,no,no,no
+oauthUserPasswordChallenge,Login Bjoern,Broken Authentication,CWE-287,A07:2021 Identification and Authentication Failures,4,core,yes,yes,no,no
+resetPasswordBenderChallenge,Reset Bender's Password,Broken Authentication,CWE-640,A07:2021 Identification and Authentication Failures,4,osint,yes,no,no,no
+changePasswordBenderChallenge,Change Bender's Password,Broken Authentication,CWE-620,A07:2021 Identification and Authentication Failures,5,core,yes,yes,no,no
+resetPasswordBjoernChallenge,Reset Bjoern's Password,Broken Authentication,CWE-640,A07:2021 Identification and Authentication Failures,5,osint,yes,no,no,no
+twoFactorAuthUnsafeSecretStorageChallenge,Two Factor Authentication,Broken Authentication,CWE-287,A07:2021 Identification and Authentication Failures,5,core,yes,yes,no,no
+weirdCryptoChallenge,Weird Crypto,Cryptographic Issues,CWE-327,A02:2021 Cryptographic Failures,2,core,yes,yes,no,no
+easterEggLevelTwoChallenge,Nested Easter Egg,Cryptographic Issues,CWE-327,A02:2021 Cryptographic Failures,4,meta,yes,no,no,no
+forgedCouponChallenge,Forged Coupon,Cryptographic Issues,CWE-327,A02:2021 Cryptographic Failures,6,core,yes,yes,no,no
+continueCodeChallenge,Imaginary Challenge,Cryptographic Issues,CWE-327,A02:2021 Cryptographic Failures,6,meta,yes,no,no,no
+premiumPaywallChallenge,Premium Paywall,Cryptographic Issues,CWE-327,A02:2021 Cryptographic Failures,6,core,yes,yes,no,no
+missingEncodingChallenge,Missing Encoding,Improper Input Validation,CWE-20,A04:2021 Insecure Design,1,core,yes,yes,no,no
+passwordRepeatChallenge,Repetitive Registration,Improper Input Validation,CWE-20,A04:2021 Insecure Design,1,core,yes,yes,no,no
+zeroStarsChallenge,Zero Stars,Improper Input Validation,CWE-20,A04:2021 Insecure Design,1,core,yes,yes,no,no
+emptyUserRegistration,Empty User Registration,Improper Input Validation,CWE-20,A04:2021 Insecure Design,2,core,yes,yes,no,no
+registerAdminChallenge,Admin Registration,Improper Input Validation,CWE-915,A08:2021 Software and Data Integrity Failures,3,core,yes,yes,no,no
+freeDeluxeChallenge,Deluxe Fraud,Improper Input Validation,CWE-20,A04:2021 Insecure Design,3,core,yes,yes,no,no
+nftMintChallenge,Mint the Honey Pot,Improper Input Validation,CWE-20,A04:2021 Insecure Design,3,core,yes,yes,no,no
+negativeOrderChallenge,Payback Time,Improper Input Validation,CWE-20,A04:2021 Insecure Design,3,core,yes,yes,no,no
+uploadSizeChallenge,Upload Size,Improper Input Validation,CWE-434,A04:2021 Insecure Design,3,core,yes,yes,no,no
+uploadTypeChallenge,Upload Type,Improper Input Validation,CWE-434,A04:2021 Insecure Design,3,core,yes,yes,no,no
+manipulateClockChallenge,Expired Coupon,Improper Input Validation,CWE-20,A04:2021 Insecure Design,4,core,yes,yes,no,no
+nullByteChallenge,Poison Null Byte,Improper Input Validation,CWE-158,A04:2021 Insecure Design,4,core,yes,yes,no,no
+chatbotPromptInjectionChallenge,Chatbot Prompt Injection,Injection,CWE-1427,A03:2021 Injection,2,core,yes,yes,no,no
+loginAdminChallenge,Login Admin,Injection,CWE-89,A03:2021 Injection,2,core,yes,yes,yes,yes
+dbSchemaChallenge,Database Schema,Injection,CWE-89,A03:2021 Injection,3,core,yes,yes,no,no
+chatbotGreedyInjectionChallenge,Greedy Chatbot Manipulation,Injection,CWE-1427,A03:2021 Injection,3,core,yes,yes,no,no
+loginBenderChallenge,Login Bender,Injection,CWE-89,A03:2021 Injection,3,core,yes,yes,no,no
+loginJimChallenge,Login Jim,Injection,CWE-89,A03:2021 Injection,3,core,yes,yes,no,no
+systemPromptExtractionChallenge,System Prompt Extraction,Injection,CWE-1427,A03:2021 Injection,3,core,yes,yes,no,no
+christmasSpecialChallenge,Christmas Special,Injection,CWE-89,A03:2021 Injection,4,core,yes,yes,no,no
+ephemeralAccountantChallenge,Ephemeral Accountant,Injection,CWE-89,A03:2021 Injection,4,core,yes,yes,no,no
+noSqlCommandChallenge,NoSQL DoS,Injection,CWE-943,A03:2021 Injection,4,core,no,no,no,no
+noSqlReviewsChallenge,NoSQL Manipulation,Injection,CWE-943,A03:2021 Injection,4,core,yes,yes,no,no
+unionSqlInjectionChallenge,User Credentials,Injection,CWE-89,A03:2021 Injection,4,core,yes,yes,no,no
+noSqlOrdersChallenge,NoSQL Exfiltration,Injection,CWE-943,A03:2021 Injection,5,core,no,no,no,no
+sstiChallenge,SSTi,Injection,CWE-1336,A03:2021 Injection,6,core,no,no,no,no
+rceChallenge,Blocked RCE DoS,Insecure Deserialization,CWE-502,A08:2021 Software and Data Integrity Failures,5,core,no,no,no,no
+yamlBombChallenge,Memory Bomb,Insecure Deserialization,CWE-776,A08:2021 Software and Data Integrity Failures,5,core,no,no,no,no
+rceOccupyChallenge,Successful RCE DoS,Insecure Deserialization,CWE-502,A08:2021 Software and Data Integrity Failures,6,core,no,no,no,no
+closeNotificationsChallenge,Mass Dispel,Miscellaneous,,,1,meta,yes,no,no,no
+privacyPolicyChallenge,Privacy Policy,Miscellaneous,,,1,meta,yes,no,no,no
+scoreBoardChallenge,Score Board,Miscellaneous,,,1,meta,yes,no,no,no
+securityPolicyChallenge,Security Policy,Miscellaneous,,,2,meta,yes,no,no,no
+csafChallenge,Security Advisory,Miscellaneous,,,3,meta,yes,no,no,no
+web3WalletChallenge,Wallet Depletion,Miscellaneous,,,6,core,yes,yes,no,no
+exposedMetricsChallenge,Exposed Metrics,Observability Failures,CWE-200,A09:2021 Security Logging and Monitoring Failures,1,core,yes,yes,yes,yes
+accessLogDisclosureChallenge,Access Log,Observability Failures,CWE-532,A09:2021 Security Logging and Monitoring Failures,4,core,yes,yes,no,no
+misplacedSignatureFileChallenge,Misplaced Signature File,Observability Failures,CWE-538,A09:2021 Security Logging and Monitoring Failures,4,core,yes,yes,no,no
+dlpPasswordSprayingChallenge,Leaked Access Logs,Observability Failures,CWE-532,A09:2021 Security Logging and Monitoring Failures,5,osint,yes,no,no,no
+errorHandlingChallenge,Error Handling,Security Misconfiguration,CWE-209,A05:2021 Security Misconfiguration,1,core,yes,yes,yes,yes
+deprecatedInterfaceChallenge,Deprecated Interface,Security Misconfiguration,,A05:2021 Security Misconfiguration,2,core,no,no,no,no
+misplacedIacFiles,Misplaced IaC Files,Security Misconfiguration,CWE-538,A05:2021 Security Misconfiguration,2,core,yes,yes,no,no
+svgInjectionChallenge,Cross-Site Imaging,Security Misconfiguration,,A05:2021 Security Misconfiguration,5,core,yes,yes,no,no
+loginSupportChallenge,Login Support Team,Security Misconfiguration,,A05:2021 Security Misconfiguration,6,core,yes,yes,no,no
+privacyPolicyProofChallenge,Privacy Policy Inspection,Security through Obscurity,CWE-656,A04:2021 Insecure Design,3,meta,yes,no,no,no
+hiddenImageChallenge,Steganography,Security through Obscurity,CWE-656,A04:2021 Insecure Design,4,meta,yes,no,no,no
+tokenSaleChallenge,Blockchain Hype,Security through Obscurity,CWE-656,A04:2021 Insecure Design,5,core,yes,yes,no,no
+directoryListingChallenge,Confidential Document,Sensitive Data Exposure,CWE-548,A05:2021 Security Misconfiguration,1,core,yes,yes,yes,yes
+exposedCredentialsChallenge,Exposed Credentials,Sensitive Data Exposure,CWE-798,A07:2021 Identification and Authentication Failures,2,core,yes,yes,no,no
+loginRapperChallenge,Login MC SafeSearch,Sensitive Data Exposure,CWE-200,A01:2021 Broken Access Control,2,osint,yes,no,no,no
+geoStalkingMetaChallenge,Meta Geo Stalking,Sensitive Data Exposure,CWE-200,A01:2021 Broken Access Control,2,osint,yes,no,no,no
+nftUnlockChallenge,NFT Takeover,Sensitive Data Exposure,CWE-200,A01:2021 Broken Access Control,2,core,yes,yes,no,no
+passwordHashLeakChallenge,Password Hash Leak,Sensitive Data Exposure,CWE-200,A01:2021 Broken Access Control,2,core,yes,yes,no,no
+geoStalkingVisualChallenge,Visual Geo Stalking,Sensitive Data Exposure,CWE-200,A01:2021 Broken Access Control,2,osint,yes,no,no,no
+loginAmyChallenge,Login Amy,Sensitive Data Exposure,CWE-200,A01:2021 Broken Access Control,3,osint,yes,no,no,no
+forgottenDevBackupChallenge,Forgotten Developer Backup,Sensitive Data Exposure,CWE-530,A01:2021 Broken Access Control,4,core,yes,yes,no,no
+forgottenBackupChallenge,Forgotten Sales Backup,Sensitive Data Exposure,CWE-530,A01:2021 Broken Access Control,4,core,yes,yes,no,no
+dataExportChallenge,GDPR Data Theft,Sensitive Data Exposure,CWE-200,A01:2021 Broken Access Control,4,core,yes,yes,no,no
+dlpPastebinDataLeakChallenge,Leaked Unsafe Product,Sensitive Data Exposure,CWE-200,A01:2021 Broken Access Control,4,osint,yes,no,no,no
+iacLeakedKeyChallenge,Login Cloud Admin,Sensitive Data Exposure,CWE-798,A01:2021 Broken Access Control,4,core,yes,yes,no,no
+resetPasswordUvoginChallenge,Reset Uvogin's Password,Sensitive Data Exposure,CWE-640,A01:2021 Broken Access Control,4,osint,yes,no,no,no
+emailLeakChallenge,Email Leak,Sensitive Data Exposure,CWE-200,A01:2021 Broken Access Control,5,core,yes,yes,no,no
+leakedApiKeyChallenge,Leaked API Key,Sensitive Data Exposure,CWE-798,A01:2021 Broken Access Control,5,core,yes,yes,no,no
+retrieveBlueprintChallenge,Retrieve Blueprint,Sensitive Data Exposure,CWE-200,A01:2021 Broken Access Control,5,core,yes,yes,no,no
+redirectCryptoCurrencyChallenge,Outdated Allowlist,Unvalidated Redirects,CWE-601,A01:2021 Broken Access Control,1,core,yes,yes,no,no
+redirectChallenge,Allowlist Bypass,Unvalidated Redirects,CWE-601,A01:2021 Broken Access Control,4,core,yes,yes,no,no
+vulnerableDockerImageChallenge,Vulnerable Infrastructure,Vulnerable Components,CWE-1395,A06:2021 Vulnerable and Outdated Components,3,core,yes,yes,no,no
+typosquattingNpmChallenge,Legacy Typosquatting,Vulnerable Components,CWE-1395,A06:2021 Vulnerable and Outdated Components,4,core,yes,yes,no,no
+knownVulnerableComponentChallenge,Vulnerable Library,Vulnerable Components,CWE-1395,A06:2021 Vulnerable and Outdated Components,4,core,yes,yes,no,no
+typosquattingAngularChallenge,Frontend Typosquatting,Vulnerable Components,CWE-1395,A06:2021 Vulnerable and Outdated Components,5,core,yes,yes,no,no
+lfrChallenge,Local File Read,Vulnerable Components,CWE-22,A06:2021 Vulnerable and Outdated Components,5,core,no,no,no,no
+supplyChainAttackChallenge,Supply Chain Attack,Vulnerable Components,CWE-1395,A06:2021 Vulnerable and Outdated Components,5,core,yes,yes,no,no
+jwtUnsignedChallenge,Unsigned JWT,Vulnerable Components,CWE-347,A06:2021 Vulnerable and Outdated Components,5,core,yes,yes,no,no
+fileWriteChallenge,Arbitrary File Write,Vulnerable Components,CWE-22,A06:2021 Vulnerable and Outdated Components,6,core,no,no,no,no
+jwtForgedChallenge,Forged Signed JWT,Vulnerable Components,CWE-347,A06:2021 Vulnerable and Outdated Components,6,core,yes,yes,no,no
+xssBonusChallenge,Bonus Payload,XSS,CWE-79,A03:2021 Injection,1,meta,yes,no,no,no
+localXssChallenge,DOM XSS,XSS,CWE-79,A03:2021 Injection,1,core,yes,yes,no,no
+reflectedXssChallenge,Reflected XSS,XSS,CWE-79,A03:2021 Injection,2,core,no,no,no,no
+restfulXssChallenge,API-only XSS,XSS,CWE-79,A03:2021 Injection,3,core,no,no,no,no
+persistedXssUserChallenge,Client-side XSS Protection,XSS,CWE-79,A03:2021 Injection,3,core,no,no,no,no
+usernameXssChallenge,CSP Bypass,XSS,CWE-79,A03:2021 Injection,4,core,no,no,no,no
+httpHeaderXssChallenge,HTTP-Header XSS,XSS,CWE-79,A03:2021 Injection,4,core,no,no,no,no
+persistedXssFeedbackChallenge,Server-side XSS Protection,XSS,CWE-79,A03:2021 Injection,4,core,no,no,no,no
+videoXssChallenge,Video XSS,XSS,CWE-79,A03:2021 Injection,6,core,no,no,no,no
+xxeFileDisclosureChallenge,XXE Data Access,XXE,CWE-611,A05:2021 Security Misconfiguration,3,core,no,no,no,no
+xxeDosChallenge,XXE DoS,XXE,CWE-776,A05:2021 Security Misconfiguration,5,core,no,no,no,no

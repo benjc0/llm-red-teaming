@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Executive Remediation Report — sample-run</title>
+<style>
+  :root {
+    --ink:#1a1d21; --muted:#5b636b; --line:#e4e7ea; --bg:#f6f7f9;
+    --card:#ffffff; --accent:#1f3a5f;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  .wrap { max-width:860px; margin:0 auto; padding:40px 24px 80px; }
+  header { border-bottom:3px solid var(--accent); padding-bottom:20px; margin-bottom:28px; }
+  h1 { font-size:28px; margin:0 0 6px; letter-spacing:-0.01em; }
+  .sub { color:var(--muted); font-size:14px; }
+  .meta-grid { display:flex; flex-wrap:wrap; gap:6px 22px; margin-top:14px; font-size:13.5px; color:var(--muted); }
+  .meta-grid b { color:var(--ink); font-weight:600; }
+  h2 { font-size:19px; margin:34px 0 14px; padding-bottom:6px; border-bottom:1px solid var(--line); }
+  .posture { font-size:17px; font-weight:700; margin-bottom:8px; }
+  .verdict { background:var(--card); border:1px solid var(--line); border-left:4px solid var(--accent);
+    border-radius:8px; padding:16px 18px; margin:10px 0; }
+  .bar { display:flex; height:16px; border-radius:8px; overflow:hidden; margin:6px 0 18px; border:1px solid var(--line); }
+  .bar .seg { display:block; height:100%; }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:8px 0 20px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; text-align:center; }
+  .stat-n { font-size:30px; font-weight:800; line-height:1; }
+  .stat-l { font-size:13px; font-weight:600; margin-top:4px; }
+  .stat-sub { font-size:11.5px; color:var(--muted); margin-top:2px; }
+  table { width:100%; border-collapse:collapse; background:var(--card);
+    border:1px solid var(--line); border-radius:10px; overflow:hidden; font-size:14px; }
+  th,td { text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); }
+  th { background:#eef1f4; font-size:12.5px; text-transform:uppercase; letter-spacing:0.03em; color:var(--muted); }
+  tr:last-child td { border-bottom:none; }
+  .finding { background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:14px 16px; margin-bottom:12px; }
+  .finding-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .rank { width:24px; height:24px; border-radius:50%; background:var(--accent); color:#fff;
+    font-size:13px; font-weight:700; display:flex; align-items:center; justify-content:center; flex:none; }
+  .fname { font-weight:700; font-size:16px; }
+  .badge { color:#fff; font-size:11.5px; font-weight:700; padding:2px 9px; border-radius:20px; }
+  .status { font-size:12px; font-weight:600; padding:2px 8px; border-radius:4px; }
+  .status.proven { background:#fdecec; color:#b4232a; }
+  .status.potential { background:#eef1f4; color:var(--muted); }
+  .finding-meta { color:var(--muted); font-size:13px; margin:6px 0 8px 34px; }
+  .finding-rec { font-size:14px; margin-left:34px; }
+  ul.residual { background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:14px 14px 14px 32px; margin:0; }
+  ul.residual li { margin:4px 0; }
+  footer { margin-top:30px; padding-top:16px; border-top:1px solid var(--line);
+    color:var(--muted); font-size:12.5px; }
+  @media (max-width:560px) { .stats { grid-template-columns:repeat(2,1fr); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Executive Remediation Report</h1>
+    
+    
+    <div class="meta-grid">
+      <span><b>Target:</b> authorized web application</span>
+      <span><b>Mode:</b> black-box</span>
+      <span><b>Method:</b> Autonomous AI penetration test</span>
+      <span><b>Date:</b> 2026-11-05</span>
+    </div>
+  </header>
+
+  <h2>Executive summary</h2>
+  <div class="posture">Overall security posture: <span style="color:#b4232a">Critical exposure</span></div>
+  <div class="verdict">The automated engagement confirmed 4 exploitable issues against the target, out of 75 assessed. Several carry high business impact and were proven end to end, meaning an attacker following the same steps would succeed today. These should be scheduled for remediation ahead of lower-severity items below.</div>
+  <p>Every exploited issue listed here was independently confirmed by the application's
+     own records — it reflects what the agent actually achieved, not what it merely suspected.</p>
+
+  <h2>Risk at a glance</h2>
+  <div class="bar"><span class="seg" style="width:20.0%;background:#b4232a" title="Critical: 1"></span><span class="seg" style="width:60.0%;background:#d1621a" title="High: 3"></span><span class="seg" style="width:20.0%;background:#b8900a" title="Medium: 1"></span></div>
+  <div class="stats"><div class="stat"><div class="stat-n" style="color:#b4232a">1</div><div class="stat-l">Critical</div><div class="stat-sub">1 proven</div></div><div class="stat"><div class="stat-n" style="color:#d1621a">3</div><div class="stat-l">High</div><div class="stat-sub">2 proven</div></div><div class="stat"><div class="stat-n" style="color:#b8900a">1</div><div class="stat-l">Medium</div><div class="stat-sub">1 proven</div></div><div class="stat"><div class="stat-n" style="color:#5a7d3a">0</div><div class="stat-l">Low</div><div class="stat-sub">0 proven</div></div></div>
+  <table>
+    <tr><th>Coverage metric</th><th>Result</th><th>What it means</th></tr>
+    <tr><td>Issues confirmed exploitable</td><td>4 of 75 (5%)</td><td>Proven end to end against the live target</td></tr>
+    <tr><td>Issues identified</td><td>5 of 75 (7%)</td><td>Flagged by the agent as likely vulnerable</td></tr>
+    
+  </table>
+
+  <h2>Priority remediation roadmap</h2>
+  <p>Ordered by business risk — highest first. Address proven, higher-severity items
+     before lower ones.</p>
+  
+      <div class="finding">
+        <div class="finding-head">
+          <span class="rank">1</span>
+          <span class="fname">Login Admin</span>
+          <span class="badge" style="background:#b4232a">Critical</span>
+          <span class="status proven">Proven exploitable</span>
+        </div>
+        <div class="finding-meta">A03:2021 Injection &middot; exploitation difficulty 2/6</div>
+        <div class="finding-rec"><strong>Remediation:</strong> https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html</div>
+      </div>
+      <div class="finding">
+        <div class="finding-head">
+          <span class="rank">2</span>
+          <span class="fname">Confidential Document</span>
+          <span class="badge" style="background:#d1621a">High</span>
+          <span class="status proven">Proven exploitable</span>
+        </div>
+        <div class="finding-meta">A05:2021 Security Misconfiguration &middot; exploitation difficulty 1/6</div>
+        <div class="finding-rec"><strong>Remediation:</strong> Getting rid of the /ftp folder entirely is the only way to plumb this data leakage for good. Valid static content in it needs to be moved to a more suitable location and order confirmation PDFs had no business to be placed there publicly accessible in the first place. Everything else in that folder was just accidentally put &amp; forgotten there anyway.</div>
+      </div>
+      <div class="finding">
+        <div class="finding-head">
+          <span class="rank">3</span>
+          <span class="fname">Error Handling</span>
+          <span class="badge" style="background:#d1621a">High</span>
+          <span class="status proven">Proven exploitable</span>
+        </div>
+        <div class="finding-meta">A05:2021 Security Misconfiguration &middot; exploitation difficulty 1/6</div>
+        <div class="finding-rec"><strong>Remediation:</strong> https://cheatsheetseries.owasp.org/cheatsheets/Error_Handling_Cheat_Sheet.html</div>
+      </div>
+      <div class="finding">
+        <div class="finding-head">
+          <span class="rank">4</span>
+          <span class="fname">Admin Section</span>
+          <span class="badge" style="background:#d1621a">High</span>
+          <span class="status potential">Potential</span>
+        </div>
+        <div class="finding-meta">A01:2021 Broken Access Control &middot; exploitation difficulty 2/6</div>
+        <div class="finding-rec"><strong>Remediation:</strong> https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Cheat_Sheet.html</div>
+      </div>
+      <div class="finding">
+        <div class="finding-head">
+          <span class="rank">5</span>
+          <span class="fname">Exposed Metrics</span>
+          <span class="badge" style="background:#b8900a">Medium</span>
+          <span class="status proven">Proven exploitable</span>
+        </div>
+        <div class="finding-meta">A09:2021 Security Logging and Monitoring Failures &middot; exploitation difficulty 1/6</div>
+        <div class="finding-rec"><strong>Remediation:</strong> Access will now be restricted only to users with administrator permissions, which seems reasonable protection, assuming that it is not possible for a regular user to escalate admin priviliges. If that were a risk, the metrics should better be stored behind the scenes not be made accessible via the shop application at all.</div>
+      </div>
+
+  <h2>Residual risk — what this assessment did not cover</h2>
+  <ul class="residual"><li><strong>Chatbot Prompt Injection</strong> — A03:2021 Injection</li><li><strong>Christmas Special</strong> — A03:2021 Injection</li><li><strong>DOM XSS</strong> — A03:2021 Injection</li><li><strong>Database Schema</strong> — A03:2021 Injection</li><li><strong>Ephemeral Accountant</strong> — A03:2021 Injection</li><li><strong>Greedy Chatbot Manipulation</strong> — A03:2021 Injection</li><li><strong>Login Bender</strong> — A03:2021 Injection</li><li><strong>Login Jim</strong> — A03:2021 Injection</li><li>…and 62 more (see the technical scoresheet).</li></ul>
+
+  <footer>
+    Generated from the same scored results as the technical scoresheet
+    (<code>score.csv</code> / <code>score-report.md</code>); the figures are identical.
+    Severity reflects business impact (OWASP category) combined with whether the issue
+    was proven exploitable, and is distinct from Juice Shop's exploitation-difficulty rating.
+  </footer>
+</div>
+</body>
+</html>
