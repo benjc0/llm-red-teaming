@@ -10,9 +10,23 @@ output; only the distilled, validated findings cross the boundary.
 | File | Role |
 |---|---|
 | `schema.py` | The `findings.json` contract: one pydantic model per phase (the handoff). |
-| `phases.py` | The phase outline: objective, guidance, allowed tools, and output model per phase. |
+| `phases.py` | The phase outline: default objective, guidance, allowed tools, and output model per phase. |
+| `prompts.py` | Dynamic prompts: load a per-phase override file over the defaults; dump a template. |
 | `runner.py` | The orchestrator: build prompt → run `claude` → log → validate → hand off. |
 | `cli.py` | Command-line entrypoint (`python3 -m apt`). |
+
+## Custom prompts
+
+By default each phase uses the objective/guidance in `phases.py`. To run with
+your own, dump the defaults, edit, and pass the file back — any phase you leave
+out keeps its default:
+
+```bash
+python3 -m apt --dump-prompts prompts.yml          # editable template of the defaults
+python3 -m apt --target http://127.0.0.1:3000 --prompts prompts.yml
+```
+
+The same file path can be given in the GUI's **Custom prompts** field.
 
 ## Install
 
@@ -29,7 +43,8 @@ python3 -m apt --target http://127.0.0.1:3000 --dry-run
 # Run recon + enumeration (the default) unattended, INSIDE A SANDBOX:
 python3 -m apt --target http://127.0.0.1:3000 --unattended
 
-# Full chain, white-box, specific model:
+# Full chain, white-box, specific model (build ./clean-source first with
+# `python3 sanitize_source.py`; never point --source at juice-shop-copy):
 python3 -m apt --target http://127.0.0.1:3000 --phases all \
     --mode white-box --source ./clean-source --unattended --model claude-opus-4-8
 ```

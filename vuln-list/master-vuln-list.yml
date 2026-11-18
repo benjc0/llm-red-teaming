@@ -29,7 +29,7 @@ vulnerabilities:
   category: Broken Access Control
   description: Reveal some behind-the-scenes information on the chatbot as a non-admin user.
   difficulty: 2
-  relevance: core
+  relevance: disabled
   available_in_docker: true
   owasp_top10: A01:2021 Broken Access Control
   owasp_llm_top10:
@@ -43,7 +43,7 @@ vulnerabilities:
   - routes/chat.ts:221
   mitigation_url: https://cheatsheetseries.owasp.org/cheatsheets/Broken_Access_Control_Cheat_Sheet.html
   reference_fix: null
-  notes: null
+  notes: No LLM backend in our build.
 - key: adminSectionChallenge
   name: Admin Section
   category: Broken Access Control
@@ -200,8 +200,8 @@ vulnerabilities:
   vulnerable_lines:
   - server.ts:389
   solve_checks:
-  - data/datacreator.ts:441
   - routes/verify.ts:174
+  - data/datacreator.ts:441
   mitigation_url: https://cheatsheetseries.owasp.org/cheatsheets/REST_Security_Cheat_Sheet.html
   reference_fix:
     file: data/static/codefixes/changeProductChallenge_3_correct.ts
@@ -709,7 +709,7 @@ vulnerabilities:
   cwe_basis: specific
   tags: []
   vulnerable_lines:
-  - server.ts:530
+  - server.ts:533
   solve_checks:
   - routes/verify.ts:53
   mitigation_url: https://cheatsheetseries.owasp.org/cheatsheets/Mass_Assignment_Cheat_Sheet.html
@@ -855,7 +855,7 @@ vulnerabilities:
   category: Injection
   description: Trick the chatbot into generating a coupon code for you despite its coupon policy saying otherwise.
   difficulty: 2
-  relevance: core
+  relevance: disabled
   available_in_docker: true
   owasp_top10: A03:2021 Injection
   owasp_llm_top10:
@@ -876,7 +876,7 @@ vulnerabilities:
     file: data/static/codefixes/chatbotPromptInjectionChallenge_2_correct.ts
     explanation: Requiring an order ID and verifying it against the database is the correct approach. Server-side validation
       ensures coupons can only be generated for real, existing orders - regardless of what the LLM is tricked into believing.
-  notes: null
+  notes: No LLM backend in our build.
 - key: loginAdminChallenge
   name: Login Admin
   category: Injection
@@ -931,7 +931,7 @@ vulnerabilities:
   description: Convince the chatbot to give you a coupon of 50% or more. Because apparently a 10% max policy is just a suggestion
     when you ask nicely enough.
   difficulty: 3
-  relevance: core
+  relevance: disabled
   available_in_docker: true
   owasp_top10: A03:2021 Injection
   owasp_llm_top10:
@@ -951,7 +951,7 @@ vulnerabilities:
     explanation: Adding schema validation with .max(10) enforces the discount limit server-side. Even if the LLM is tricked
       into requesting a higher discount, the validation will reject it before the coupon is generated. This is the correct
       approach because it does not rely on the LLM following instructions.
-  notes: null
+  notes: No LLM backend in our build.
 - key: loginBenderChallenge
   name: Login Bender
   category: Injection
@@ -1006,7 +1006,7 @@ vulnerabilities:
   description: Extract the chatbot's system prompt using prompt injection, then submit your findings (including any confidential
     sections) via the Customer Complaint form.
   difficulty: 3
-  relevance: core
+  relevance: disabled
   available_in_docker: true
   owasp_top10: A03:2021 Injection
   owasp_llm_top10:
@@ -1021,7 +1021,7 @@ vulnerabilities:
   - routes/verify.ts:210
   mitigation_url: https://genai.owasp.org/llmrisk/llm072025-system-prompt-leakage/
   reference_fix: null
-  notes: null
+  notes: No LLM backend in our build.
 - key: christmasSpecialChallenge
   name: Christmas Special
   category: Injection
@@ -1358,7 +1358,7 @@ vulnerabilities:
   tags:
   - Good Practice
   vulnerable_lines:
-  - server.ts:750
+  - server.ts:769
   solve_checks:
   - routes/metrics.ts:86
   mitigation_url: null

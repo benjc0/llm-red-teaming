@@ -1,8 +1,9 @@
 # APT GUI
 
 A local, browser-based console for the APT pipeline. It **reads** the run
-directory the orchestrator writes and **launches** `python -m apt` for new runs;
-it never re-implements any pipeline logic, so the CLI and GUI can't drift.
+directory the orchestrator writes and **launches** `python -m apt` (AI agent) or
+`python -m baseline` (free tools) for new runs; it never re-implements any
+pipeline logic, so the CLI and GUI can't drift.
 
 Zero third-party dependencies: the backend is Python's standard-library
 `http.server`, the frontend is plain HTML/CSS/JS with no build step. It runs the
@@ -36,10 +37,33 @@ The orchestrator (`apt/`) must be importable from `Tooling/` and runnable
   `logs/<phase>.jsonl` stream: each shell command, file write, tool result and
   the agent's reasoning, as collapsible rows. Bookkeeping/system events are
   filtered out.
-- **Report** — the generated `reporting/report.md`.
+- **Report** — the generated `reporting/report.md`, plus an **Executive report**
+  bar that generates `exec-report.{md,html,pdf}` and links to each.
+- **Score** — a run is scored against the answer key with the **Score** button
+  (or automatically by the runners); `score.json` drives the score line shown in
+  the list and detail.
+
+Both the AI (`+ New run → Engine: AI agent`) and the free-tools baseline
+(`Engine: Free tools`; needs Docker) can be launched from here; they appear in
+the same list, tagged **AI** or **TOOLS**.
 
 While a run is live the view polls and updates: the pipeline advances, the
 activity feed tails, and structured findings snap in as each phase completes.
+
+## Comparing the AI with the free tools
+
+The AI-vs-tools comparison is **not part of the console** — it is produced for
+the written report and the presentation. Score an AI run and a free-tools run
+(same target, same mode, fresh container each), then:
+
+```bash
+python3 vuln-list/compare_runs.py Tooling/runs/<ai-run> Tooling/runs/<base-run> \
+    --out comparisons/blackbox
+```
+
+which writes `comparison.md` (the table for the report) and `comparison.json`.
+See `Documents/2026-11-17-zap-vs-ai-case-study.md` for the focused ZAP-vs-AI
+write-up.
 
 ### Deep links
 
@@ -62,7 +86,8 @@ activity feed tails, and structured findings snap in as each phase completes.
 | File | Role |
 |---|---|
 | `runstore.py` | Read-only parse of the run directory into API dicts. No pydantic. |
-| `launcher.py` | Validates launch params and spawns `python -m apt`. |
+| `launcher.py` | Validates launch params and spawns `python -m apt` or `python -m baseline`. |
+| `compare.py` | GUI helpers that shell out to the vuln-list tools (score a run, generate the executive report) plus the free-tool lineup for the run form. |
 | `server.py` | Standard-library HTTP router: JSON API + static files. |
 | `cli.py` | `python3 -m apt_gui` entrypoint. |
 | `static/` | The single-page frontend (`index.html`, `app.js`, `styles.css`). |

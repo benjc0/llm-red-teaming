@@ -17,6 +17,7 @@ import argparse
 import sys
 
 from . import phases as phase_defs
+from . import prompts
 from .runner import RunConfig, run_pipeline
 from .schema import Phase
 
@@ -40,7 +41,7 @@ def _parse_phases(value: str) -> list[Phase]:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="apt", description="APT autonomous pentest pipeline.")
-    p.add_argument("--target", required=True, help="Authorized target URL, e.g. http://127.0.0.1:3000")
+    p.add_argument("--target", default=None, help="Authorized target URL, e.g. http://127.0.0.1:3000")
     p.add_argument("--phases", type=_parse_phases, default=list(phase_defs.DEFAULT_PHASES),
                    help="Comma-separated phases, or 'all'. Default: recon,enumeration.")
     p.add_argument("--mode", choices=["black-box", "white-box"], default="black-box")
@@ -57,11 +58,35 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Run tools without approval prompts (--dangerously-skip-permissions). SANDBOX ONLY.")
     p.add_argument("--dry-run", action="store_true",
                    help="Print what each phase would run, without invoking Claude Code.")
+    p.add_argument("--prompts", default=None, metavar="FILE",
+                   help="Prompt file overriding per-phase objective/guidance (YAML or JSON). "
+                        "Phases it omits keep the built-in defaults.")
+    p.add_argument("--dump-prompts", default=None, metavar="FILE",
+                   help="Write the built-in default prompts to FILE (editable template), then exit.")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.dump_prompts:
+        path = prompts.dump_template(args.dump_prompts)
+        print(f"Wrote default prompts to {path}. Edit it and pass it with --prompts.")
+        return 0
+
+    if not args.target:
+        print("--target is required (or use --dump-prompts to write a prompt template).",
+              file=sys.stderr)
+        return 2
+
+    prompt_overrides = None
+    if args.prompts:
+        try:
+            prompt_overrides = prompts.load_overrides(args.prompts)
+        except prompts.PromptError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(f"Using custom prompts for: {', '.join(sorted(prompt_overrides))}")
 
     if args.mode == "white-box" and not args.source_dir:
         print("white-box mode needs --source pointing at a cleaned source tree.", file=sys.stderr)
@@ -83,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
         unattended=args.unattended,
         dry_run=args.dry_run,
         grading_token=args.grading_token,
+        prompt_overrides=prompt_overrides,
     )
 
     print(f"APT run {cfg.run_id} | target {cfg.target} | mode {cfg.mode} | "

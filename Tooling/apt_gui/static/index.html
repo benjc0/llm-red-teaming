@@ -27,7 +27,15 @@
   <!-- New run modal -->
   <div class="modal-back" id="modal-back">
     <div class="modal">
-      <h2>Start a new APT run</h2>
+      <h2>Start a new run</h2>
+      <div class="field">
+        <label>Engine</label>
+        <div class="seg" id="f-engine" role="radiogroup">
+          <button type="button" class="seg-btn sel" data-engine="ai" role="radio" aria-checked="true">AI agent<span>Claude Code, phase by phase</span></button>
+          <button type="button" class="seg-btn" data-engine="baseline" role="radio" aria-checked="false">Free tools<span>nmap, ZAP, sqlmap… (baseline)</span></button>
+        </div>
+        <div class="tools-info" id="f-tools-info"></div>
+      </div>
       <div class="field">
         <label>Target URL</label>
         <input type="text" id="f-target" value="http://127.0.0.1:3000" placeholder="http://127.0.0.1:3000">
@@ -52,16 +60,24 @@
         <input type="text" id="f-source" placeholder="./clean-source">
         <div class="hint">A cleaned source tree. Never point this at the full juice-shop-copy — it contains the answer key.</div>
       </div>
-      <div class="field">
+      <div class="field ai-only">
         <label>Model (optional)</label>
         <input type="text" id="f-model" placeholder="claude-opus-4-8">
+      </div>
+      <div class="field ai-only">
+        <label>Custom prompts (optional)</label>
+        <input type="text" id="f-prompts" placeholder="./my-prompts.yml">
+        <div class="hint">Path to a prompt file overriding per-phase objective/guidance. Omitted phases keep the defaults. Generate a template with <code>python3 -m apt --dump-prompts prompts.yml</code>.</div>
       </div>
       <div class="field">
         <label>Grading token (optional)</label>
         <input type="text" id="f-token" placeholder="APT_GRADING_TOKEN value">
         <div class="hint">Sent to the orchestrator via the environment, never to the agent. Enables oracle confirmation of exploits.</div>
       </div>
-      <div class="field">
+      <div class="field baseline-only" style="display:none;">
+        <label class="checkrow"><input type="checkbox" id="f-dryrun"> Dry run (log each tool's command without running it)</label>
+      </div>
+      <div class="field ai-only">
         <label class="checkrow"><input type="checkbox" id="f-unattended"> Unattended (--dangerously-skip-permissions)</label>
         <div class="warn-box" id="f-warn">Unattended runs execute tools without approval. Only do this inside an isolated sandbox whose network reaches only the target.</div>
       </div>
@@ -73,6 +89,7 @@
     </div>
   </div>
 
+  <div class="tip" id="tip" role="tooltip"></div>
   <script src="/static/app.js"></script>
 </body>
 </html>

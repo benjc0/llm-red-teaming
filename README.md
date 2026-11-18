@@ -1,54 +1,104 @@
-# llm-red-teaming
-AI RedTeaming Github repo Senior Design project.
+# APT — Automated Pentesting
 
-Tasked with utilizing AI to systematically pentest a given site, in this case owasp juice shop and have it discover, document, and produce mitigations for vulnerabilities.
+**COMP 4710 Senior Design · Auburn University**
 
-We are utilizing a custom juice shop website, the website code in this repository will eventually not have the challenge board which lists the possible explots.
+APT runs a full, autonomous penetration test against a live web application,
+moving through the standard phases — reconnaissance → enumeration →
+vulnerability assessment → exploitation → post-exploitation → reporting →
+mitigation — and measures how well it did against a private answer key. The
+target is a containerized, de-branded copy of OWASP Juice Shop with its
+challenge board and hints removed, so the agent gets no cheat sheet.
 
+The project answers one question: **how does an autonomous AI agent compare to
+the traditional, deterministic tooling a human pentester uses?** So APT ships
+two interchangeable engines that attack the same target through the same phases
+and are scored against the same ground truth:
 
+- **AI agent** (`Tooling/apt/`) — drives Claude Code headless, one clean-context
+  invocation per phase, handing a schema-validated `findings.json` between them.
+- **Free-tools baseline** (`Tooling/baseline/`) — the same phases driven by nmap,
+  WhatWeb, Katana, ffuf, Arjun, ZAP, Nuclei, Nikto, Retire.js, sqlmap and
+  Semgrep, writing the identical `findings.json`.
 
+Because both write the same artifact, the scoring and comparison spine
+(`vuln-list/`) and the browser console (`Tooling/apt_gui/`) treat them
+identically — the AI-vs-tools comparison falls out for free.
 
-cd juice-shop-copy/
-docker build -t custom-juice-shop .
+## Repository layout
 
-# Generate a per-run grading token. The pentest agent is never given this;
-# only the scoring script (vuln-list/check_live_app.py) uses it to read solve
-# state from the private /grading/solves oracle. The public /api/Challenges
-# list no longer exposes challenge metadata to the agent.
+| Path | What it is |
+|---|---|
+| `Tooling/apt/` | The AI engine (Claude Code, phase by phase). |
+| `Tooling/baseline/` | The free-tools engine (deterministic scanners). |
+| `Tooling/apt_gui/` | Local browser console: launch runs, watch them live, read and score results. |
+| `Tooling/sanitize_source.py` | Builds the answer-key-free source tree white-box runs need. |
+| `Tooling/preflight.py`, `verify_oracle.py` | OS-agnostic environment + oracle checks. |
+| `vuln-list/` | The private answer key and the scoring / comparison / executive-report tools. |
+| `juice-shop-copy/` | The target application (de-branded, board removed). |
+| `Documents/` | Design doc, roadmap, and the ZAP-vs-AI case study. |
+
+## Quick start
+
+```bash
+# 1. Build the target image
+cd juice-shop-copy && docker build -t custom-juice-shop . && cd ..
+
+# 2. Per-run grading token — the agent never sees it; only the scorer uses it to
+#    read solve state from the private /grading/solves oracle.
 export APT_GRADING_TOKEN=$(openssl rand -hex 16)
+docker run -d --rm -p 127.0.0.1:3000:3000 -e APT_GRADING_TOKEN \
+    --name juice-shop custom-juice-shop
 
-docker run --rm -p 127.0.0.1:3000:3000 -e APT_GRADING_TOKEN --name juice-shop custom-juice-shop
+# 3. Check the environment (Claude Code present + authenticated)
+cd Tooling && python3 preflight.py
 
+# 4. Run the AI pentest (inside an isolated sandbox — see the warning below)
+python3 -m apt --target http://127.0.0.1:3000 --phases all --unattended
 
+# 5. Or the free-tools baseline, for comparison (restart the container first)
+python3 -m baseline --target http://127.0.0.1:3000 --phases all
 
-## Cycle 1 todo:
+# 6. Open the console: launch runs, watch them live, read and compare results
+python3 -m apt_gui
+```
 
-- Containerized Juice Shop - Done 
-- Challenge board removed (hints and tutorials disabled aswell) - Ben
-- determine what AI model/how we want to direct the AI at the site/logging - Cooper 
-    - have the AI be able to perform automated recon/enumeration of site, but not go further. - some sort of bash script that invokes claude code, with optional parameters 
-- Create a 'master vuln list/document' to base the AI's results off of. - see [vuln-list/](vuln-list/README.md)
-- AI Chat bot backend (Olama, making it accessible to the dockerized container)
+Output lands in `Tooling/runs/<run-id>/`. Score a run with
+`python3 vuln-list/score_run.py Tooling/runs/<run-id>`, and build the
+higher-ups PDF with `python3 vuln-list/exec_report.py Tooling/runs/<run-id>`.
 
-- change the branding of the 'Juice Shop' to a custom format in attempt to trick AI/make it not as obvious to the AI model what it is. (AI Models have likely trained on this site plenty, so are able to pull from that instead of strictly pentesting) - Cooper/Charles
-- written report - higher priority, user stories, had a slight change of direction
-    - change the branding of the juice shop/give our product its own name
-    - Have ability for AI Pentest to be White box vs Black box (provide source code of website or not during pentesting)
-    - Remove the challenge board from the website so the AI doesn't have the list of known vulnerabilities with the site
-    - "I Would like a full vulnerability list of the website, so I know how the AI model did in its pentesting"
-    - "I would like for there to be a locall llm chatbot on the backend that has vulnerabilities that can be discovered as well"
-    - "I would like the AI Pentesting bot to document its findings and be able to invoke relevant tool"
-    - have a seperate LLM that has all the notes/documentation to have it test and verify
-- presentation 
+> **Sandbox only.** `--unattended` lets the agent run tools without approval
+> prompts. Only use it inside an isolated VM/container whose network reaches
+> nothing but the target. See `Tooling/README.md` for the full fair-comparison
+> procedure and low-memory guidance.
 
+## What it does
 
-## AI Chatbot backend
-Local LLM idea:
+- **Black-box and white-box.** White-box exposes the source via `--mode
+  white-box --source ./clean-source`; build that cleaned tree first with
+  `python3 Tooling/sanitize_source.py` (never point `--source` at
+  `juice-shop-copy/` — it contains the answer key).
+- **Custom prompts.** Each phase uses a built-in prompt by default; override any
+  phase with `--prompts FILE` (`--dump-prompts` writes a template) or the GUI's
+  Custom prompts field.
+- **Ground-truth scoring.** Exploitation is confirmed by Juice Shop's own
+  server-side solve oracle, not by the agent's say-so. Detection, exploitation
+  rate, precision and F1 are scored against the answer key, broken down by OWASP
+  Top 10 and difficulty.
+- **AI vs. tools.** Score an AI run and a free-tools run against the same answer
+  key, then `vuln-list/compare_runs.py` writes the side-by-side `comparison.md`
+  (effectiveness, cost, time, per-vulnerability overlap) for the report. This
+  comparison is a report/presentation artifact, not a console feature.
+- **Executive report.** A short, higher-ups-appropriate PDF (posture, risk at a
+  glance, priority remediation roadmap), rendered from the scored run.
 
-https://pwning.owasp-juice.shop/companion-guide/snapshot/part1/running.html#_aillm_provider
+The target's LLM chatbot backend was dropped in Cycle 3: no LLM backend is
+deployed, and the four chatbot vulnerabilities are excluded from grading (see
+`vuln-list/README.md`).
 
+## Documentation
 
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull gemma4:e4b
-
-need to somehow make it accessible to the docker container hosting the website.
+- `Tooling/README.md` — running fair comparisons, memory, the full tool list.
+- `Tooling/apt/README.md` / `Tooling/baseline/README.md` / `Tooling/apt_gui/README.md`
+- `vuln-list/README.md` — the answer key and how scoring works.
+- `Documents/2026-09-22-APT-design.md` — the design decisions.
+- `Documents/2026-11-17-zap-vs-ai-case-study.md` — the ZAP-vs-AI case study.

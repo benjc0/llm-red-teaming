@@ -109,6 +109,23 @@ def test_activity_filters_noise_and_parses_tools(tmp_path):
     assert tu["label"].startswith("curl -s")
 
 
+def test_activity_surfaces_event_timestamps(tmp_path):
+    run = tmp_path / "20260101-00000T"
+    log = run / "logs" / "recon.jsonl"
+    events = [
+        # AI stream-json carries the time as 'timestamp' on the outer event...
+        {"type": "assistant", "timestamp": "2026-10-22T17:45:11.364Z",
+         "message": {"content": [{"type": "text", "text": "hi"}]}},
+        # ...the free-tools baseline carries it as 'ts' (type is tool_<step>).
+        {"type": "tool_run", "tool": "nmap", "ts": "2026-10-22T17:46:00Z", "text": "scanning"},
+    ]
+    _write(log, "\n".join(json.dumps(e) for e in events))
+
+    evs = RunStore(tmp_path).activity("20260101-00000T", "recon")["events"]
+    assert evs[0]["ts"] == "2026-10-22T17:45:11.364Z"
+    assert evs[1]["ts"] == "2026-10-22T17:46:00Z"
+
+
 def test_activity_after_paginates(tmp_path):
     run = tmp_path / "20260101-000004"
     log = run / "logs" / "recon.jsonl"

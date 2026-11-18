@@ -93,8 +93,19 @@ class RunStore:
         vuln = _read_json(run_dir / "vuln_assessment" / "findings.json")
         if vuln:
             total_vulns = len((vuln.get("payload") or {}).get("vulnerabilities") or [])
+        score = _read_json(run_dir / "score.json")
+        metrics = (score or {}).get("metrics") or {}
+        kind = (manifest or {}).get("kind") or (score or {}).get("kind") \
+            or ("baseline" if run_dir.name.startswith("base-") else "ai")
         return {
             "run_id": run_dir.name,
+            "kind": kind,
+            "scored": score is not None,
+            # The scorer needs vuln-assessment or exploitation findings.
+            "scorable": any((run_dir / p / "findings.json").is_file()
+                            for p in ("vuln_assessment", "exploitation")),
+            "detection_rate": metrics.get("detection_rate"),
+            "exploitation_rate": metrics.get("exploitation_rate"),
             "target": (manifest or {}).get("target")
             or self._any_target(run_dir),
             "mode": (manifest or {}).get("mode"),
@@ -150,6 +161,9 @@ class RunStore:
                 "state": state,
                 "error": (mp or {}).get("error"),
                 "usage": (mp or {}).get("usage"),
+                "duration_s": (mp or {}).get("duration_s"),
+                "started_at": (mp or {}).get("started_at"),
+                "ended_at": (mp or {}).get("ended_at"),
                 "has_findings": findings_exists,
             })
 
@@ -188,6 +202,9 @@ class RunStore:
             findings = _read_json(run_dir / p["phase"] / "findings.json")
             detail["phases"].append({**p, "findings": findings})
         detail["report_available"] = (run_dir / "reporting" / "report.md").is_file()
+        detail["exec_report"] = {
+            fmt: (run_dir / f"exec-report.{fmt}").is_file() for fmt in ("pdf", "html", "md")
+        }
         return detail
 
     def report_markdown(self, run_id: str) -> Optional[str]:
@@ -220,8 +237,11 @@ class RunStore:
         seq = 0
         complete = False
         for raw in self._iter_lines(log_path):
+            ts = self._line_ts(raw)
             for ev in self._events_from_line(raw):
                 seq += 1
+                if ts and "ts" not in ev:
+                    ev["ts"] = ts
                 if ev.get("_type") == "result":
                     complete = True
                 if seq <= after:
@@ -244,6 +264,16 @@ class RunStore:
             return
 
     @staticmethod
+    def _line_ts(raw: str) -> Optional[str]:
+        """The ISO timestamp a log line carries, if any: AI stream-json uses
+        'timestamp', the free-tools baseline uses 'ts'."""
+        try:
+            e = json.loads(raw)
+        except ValueError:
+            return None
+        return e.get("timestamp") or e.get("ts")
+
+    @staticmethod
     def _events_from_line(raw: str) -> list[dict]:
         """Turn one stream-json line into zero or more flat activity events."""
         try:
@@ -258,6 +288,12 @@ class RunStore:
             # bookkeeping, not activity -- there are hundreds and they bury the
             # real tool calls. Drop them from the stream.
             return []
+        if isinstance(etype, str) and (etype.startswith("tool_") or etype.startswith("oracle")) \
+                and "tool" in e:
+            # Baseline (free-tools) runner log: one record per tool step.
+            return [{"_type": "baseline", "event": etype, "tool": e.get("tool"),
+                     "text": str(e.get("text") or "")[:1500],
+                     "is_error": etype in ("tool_error", "tool_prep_error", "tool_skip")}]
         if etype == "rate_limit_event":
             out.append({"_type": "rate_limit", "text": "rate limit event"})
         elif etype == "result":
@@ -370,6 +406,8 @@ def _guess_type(name: str) -> str:
         return "text/html; charset=utf-8"
     if lower.endswith((".xml",)):
         return "application/xml; charset=utf-8"
+    if lower.endswith(".pdf"):
+        return "application/pdf"
     if lower.endswith((".md", ".txt", ".yml", ".yaml", ".log", ".jsonl", ".csv")):
         return "text/plain; charset=utf-8"
     return "application/octet-stream"

@@ -16,6 +16,8 @@ const state = {
   activity: { phase: null, lastSeq: 0, events: [], complete: false },
   openEvents: new Set(),  // event seqs expanded in the activity view
   polling: null,
+  engine: "ai",           // new-run modal engine: ai | baseline
+  tools: null,            // /api/tools (free-tool lineup per phase)
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -64,16 +66,25 @@ function renderRunList() {
     top.style.display = "flex";
     top.style.justifyContent = "space-between";
     top.style.alignItems = "center";
-    top.appendChild(el("span", "rid", r.run_id));
+    const left = el("span");
+    left.appendChild(kindBadge(r.kind));
+    left.appendChild(el("span", "rid", r.run_id));
+    top.appendChild(left);
     top.appendChild(el("span", "badge " + r.status, r.status));
     row.appendChild(top);
 
     const meta = el("div", "meta");
     meta.appendChild(el("span", null, `${r.phases_done}/${r.phases_total} phases`));
     if (r.vuln_count != null) meta.appendChild(el("span", null, `${r.vuln_count} vulns`));
-    if (r.cost_usd != null) meta.appendChild(el("span", null, `$${r.cost_usd.toFixed(2)}`));
+    if (r.cost_usd != null && r.kind !== "baseline") meta.appendChild(el("span", null, `$${r.cost_usd.toFixed(2)}`));
     if (r.mode) meta.appendChild(el("span", null, r.mode));
     row.appendChild(meta);
+    if (r.scored) {
+      const sc = el("div", "meta score-line");
+      sc.appendChild(el("span", null, `detect ${pct(r.detection_rate)}`));
+      sc.appendChild(el("span", null, `exploit ${pct(r.exploitation_rate)}`));
+      row.appendChild(sc);
+    }
     if (r.target) row.appendChild(el("div", "target", r.target));
 
     row.onclick = () => selectRun(r.run_id);
@@ -134,15 +145,22 @@ function renderDetail() {
   const head = el("div", "detail-head");
   head.appendChild(el("h1", null, d.run_id));
   head.appendChild(el("span", "badge " + d.status, d.status));
+  const actions = el("span", "head-actions");
+  if (d.scorable) actions.appendChild(scoreButton(d.run_id, d.scored));
+  head.appendChild(actions);
   c.appendChild(head);
 
   const sub = el("div", "detail-sub");
   const addSub = (k, v) => { if (v != null && v !== "") { const s = el("span"); s.innerHTML = `${k} <b>${escapeHtml(String(v))}</b>`; sub.appendChild(s); } };
+  addSub("engine", d.kind === "baseline" ? "free tools" : "AI agent");
   addSub("target", d.target);
   addSub("mode", d.mode);
-  addSub("model", d.model || "default");
-  if (d.usage_total && d.usage_total.cost_usd != null) addSub("cost", `$${d.usage_total.cost_usd.toFixed(2)}`);
-  if (d.usage_total && d.usage_total.total_tokens != null) addSub("tokens", d.usage_total.total_tokens.toLocaleString());
+  if (d.kind !== "baseline") {
+    addSub("model", d.model || "default");
+    if (d.usage_total && d.usage_total.cost_usd != null) addSub("cost", `$${d.usage_total.cost_usd.toFixed(2)}`);
+    if (d.usage_total && d.usage_total.total_tokens != null) addSub("tokens", d.usage_total.total_tokens.toLocaleString());
+  }
+  if (d.scored) addSub("score", `detect ${pct(d.detection_rate)} · exploit ${pct(d.exploitation_rate)}`);
   c.appendChild(sub);
 
   // progress bar
@@ -159,6 +177,8 @@ function renderDetail() {
     const node = el("div", `pnode ${p.state}` + (p.phase === state.selectedPhase ? " sel" : ""));
     node.appendChild(el("div", "pname", p.title));
     node.appendChild(el("div", "pstate", p.state));
+    if (p.duration_s != null) node.appendChild(el("div", "pdur", fmtDur(p.duration_s)));
+    if (p.started_at) node.title = `started ${timeStr(p.started_at)}` + (p.ended_at ? ` · ended ${timeStr(p.ended_at)}` : "");
     node.onclick = () => { state.selectedPhase = p.phase; renderDetail(); syncHash(); loadActivityIfNeeded(true); };
     pipe.appendChild(node);
   }
@@ -355,7 +375,9 @@ function endpointTable(panel, title, eps) {
 function renderActivity(panel) {
   const info = el("div", "muted");
   info.style.marginBottom = "10px";
-  info.textContent = `Live tool activity for the "${state.selectedPhase}" phase — commands, reasoning and results as the agent works.`;
+  info.textContent = state.detail && state.detail.kind === "baseline"
+    ? `Tool log for the "${state.selectedPhase}" phase: which free tools ran, were skipped, or failed.`
+    : `Live tool activity for the "${state.selectedPhase}" phase — commands, reasoning and results as the agent works.`;
   panel.appendChild(info);
 
   const stream = el("div", "activity");
@@ -382,6 +404,7 @@ function renderEvent(ev) {
   const row = el("div", "ev " + ev._type);
   if (ev._type === "tool_use") {
     const head = el("div", "ev-head");
+    if (ev.ts) head.appendChild(el("span", "ev-time", timeStr(ev.ts)));
     const caret = el("span", "ev-caret", state.openEvents.has(ev.seq) ? "▾" : "▸");
     head.appendChild(caret);
     head.appendChild(el("span", "tname", ev.tool));
@@ -393,6 +416,7 @@ function renderEvent(ev) {
     head.onclick = () => { toggleEvent(ev.seq); caret.textContent = state.openEvents.has(ev.seq) ? "▾" : "▸"; body.classList.toggle("hidden"); };
   } else if (ev._type === "tool_result") {
     const head = el("div", "ev-head");
+    if (ev.ts) head.appendChild(el("span", "ev-time", timeStr(ev.ts)));
     const caret = el("span", "ev-caret", state.openEvents.has(ev.seq) ? "▾" : "▸");
     head.appendChild(caret);
     head.appendChild(el("span", "tname" + (ev.is_error ? " err" : ""), ev.is_error ? "result ✗" : "result"));
@@ -402,8 +426,18 @@ function renderEvent(ev) {
     body.textContent = ev.preview + (ev.truncated ? "\n… (truncated; open the raw artifact for full output)" : "");
     row.appendChild(body);
     head.onclick = () => { toggleEvent(ev.seq); caret.textContent = state.openEvents.has(ev.seq) ? "▾" : "▸"; body.classList.toggle("hidden"); };
+  } else if (ev._type === "baseline") {
+    const head = el("div", "ev-head");
+    if (ev.ts) head.appendChild(el("span", "ev-time", timeStr(ev.ts)));
+    head.appendChild(el("span", "tname" + (ev.is_error ? " err" : ""), ev.tool));
+    head.appendChild(el("span", "muted", ev.event.replace(/^tool_/, "")));
+    head.appendChild(el("span", "ev-label", ev.text));
+    row.appendChild(head);
   } else {
-    row.appendChild(el("div", null, ev.text || ev._type));
+    const line = el("div");
+    if (ev.ts) line.appendChild(el("span", "ev-time", timeStr(ev.ts)));
+    line.appendChild(el("span", null, ev.text || ev._type));
+    row.appendChild(line);
   }
   return row;
 }
@@ -451,21 +485,55 @@ function renderReportPlaceholder(panel) {
   panel.id = "panel";
   panel.appendChild(el("div", "muted", "Loading report…"));
 }
+function execReportBar() {
+  // Executive report (for higher-ups): generate md/html/PDF, link to each.
+  const ex = (state.detail && state.detail.exec_report) || {};
+  const card = el("div", "card");
+  const row = el("div");
+  row.style.display = "flex";
+  row.style.alignItems = "center";
+  row.style.gap = "10px";
+  row.style.flexWrap = "wrap";
+  row.appendChild(el("b", null, "Executive report"));
+  const gen = el("button", null, ex.pdf ? "Regenerate" : "Generate PDF");
+  const status = el("span", "muted");
+  const raw = (f) => `/api/runs/${state.selectedRun}/raw?path=exec-report.${f}`;
+  gen.onclick = async () => {
+    gen.disabled = true; status.textContent = "generating… (scoring + rendering PDF)";
+    try {
+      const r = await api(`/api/runs/${state.selectedRun}/exec-report`, { method: "POST" });
+      await refreshDetail(false);
+      status.textContent = r.pdf ? "done" : "done (no PDF — install Chromium)";
+    } catch (e) { status.textContent = "failed: " + e.message; }
+    gen.disabled = false;
+    renderDetail(); loadReport();
+  };
+  row.appendChild(gen);
+  for (const f of ["pdf", "html", "md"]) {
+    if (ex[f]) { const a = el("a", "chip", "⬇ " + f.toUpperCase()); a.href = raw(f); a.target = "_blank"; row.appendChild(a); }
+  }
+  row.appendChild(status);
+  card.appendChild(row);
+  card.appendChild(el("div", "muted", "A short, higher-ups-appropriate summary: posture, risk-at-a-glance and a priority remediation roadmap, scored against the answer key."));
+  return card;
+}
+
 async function loadReport() {
   const panel = $("#panel");
   if (!panel) return;
+  panel.innerHTML = "";
+  panel.appendChild(execReportBar());
   try {
     const md = await api(`/api/runs/${state.selectedRun}/report`);
-    panel.innerHTML = "";
     const card = el("div", "card");
+    card.appendChild(el("div", "ctitle", "Technical report (reporting phase)"));
     const pre = el("div", "cbody");
     pre.style.fontFamily = "var(--mono)";
     pre.textContent = md;
     card.appendChild(pre);
     panel.appendChild(card);
   } catch (e) {
-    panel.innerHTML = "";
-    panel.appendChild(el("div", "empty", "No report.md for this run (run the reporting phase to generate one)."));
+    panel.appendChild(el("div", "muted", "No technical report.md for this run (run the reporting phase to generate one)."));
   }
 }
 
@@ -480,17 +548,60 @@ function stopPolling() { if (state.polling) { clearInterval(state.polling); stat
 async function tick() {
   await loadRuns();
   if (!state.selectedRun) return;
+  // A completed run is static: re-rendering it every tick would wipe whatever
+  // the open tab loaded (e.g. the report panel). Only refresh while it's live.
   const running = state.detail && state.detail.status === "running";
-  // Always refresh the list; refresh the open detail/activity when live (or occasionally).
+  if (!running) return;
   await refreshDetail(false);
-  if (state.tab === "activity" && (running || !state.activity.complete)) {
-    await loadActivityIfNeeded(false);
-  }
+  if (state.tab === "activity") await loadActivityIfNeeded(false);
+  else if (state.tab === "report") loadReport();
 }
 
 /* ---------------- new run modal ---------------- */
 
-function openModal() { $("#modal-back").classList.add("show"); $("#f-err").textContent = ""; }
+function openModal() { $("#modal-back").classList.add("show"); $("#f-err").textContent = ""; setEngine(state.engine); }
+
+function setEngine(engine) {
+  state.engine = engine;
+  document.querySelectorAll("#f-engine .seg-btn").forEach((b) => {
+    const on = b.dataset.engine === engine;
+    b.classList.toggle("sel", on);
+    b.setAttribute("aria-checked", on ? "true" : "false");
+  });
+  document.querySelectorAll(".ai-only").forEach((n) => { n.style.display = engine === "ai" ? "" : "none"; });
+  document.querySelectorAll(".baseline-only").forEach((n) => { n.style.display = engine === "baseline" ? "" : "none"; });
+  $("#btn-launch").textContent = engine === "ai" ? "Launch AI run" : "Launch tool run";
+  const info = $("#f-tools-info");
+  info.innerHTML = "";
+  if (engine !== "baseline") return;
+  info.appendChild(el("div", "hint", "Runs standard free tools through the same phases and writes the same findings format, so the run is scored like an AI run. Needs Docker (nmap, Arjun and Retire.js run natively if installed). Missing tools are skipped and logged."));
+  info.appendChild(toolLineup());
+}
+
+/* Free-tool lineup per phase, as a compact two-column list. */
+function toolLineup() {
+  const box = el("div", "lineup");
+  if (!state.tools) { box.appendChild(el("div", "muted", "Loading tool lineup…")); return box; }
+  for (const ph of state.phaseOrder) {
+    const info = state.tools[ph];
+    if (!info) continue;
+    const row = el("div", "lineup-row");
+    row.appendChild(el("div", "lineup-phase", info.title));
+    const tools = el("div", "chips");
+    if (info.tools.length) {
+      info.tools.forEach((t) => {
+        const c = el("span", "chip", t.name + (t.white_box_only ? " (white-box)" : ""));
+        if (t.purpose) c.dataset.tip = t.purpose;
+        tools.appendChild(c);
+      });
+    } else {
+      tools.appendChild(el("span", "muted derived", "derived: " + (info.derived || "from earlier output")));
+    }
+    row.appendChild(tools);
+    box.appendChild(row);
+  }
+  return box;
+}
 function closeModal() { $("#modal-back").classList.remove("show"); }
 
 function buildPhaseChecks() {
@@ -523,6 +634,9 @@ async function launch() {
     grading_token: $("#f-token").value.trim(),
     unattended: $("#f-unattended").checked,
     source: $("#f-source").value.trim(),
+    prompts: $("#f-prompts").value.trim(),
+    engine: state.engine,
+    dry_run: $("#f-dryrun").checked,
   };
   try {
     const res = await api("/api/launches", {
@@ -536,11 +650,74 @@ async function launch() {
   }
 }
 
+function kindBadge(kind) {
+  const b = el("span", "kind " + (kind === "baseline" ? "tools" : "ai"), kind === "baseline" ? "TOOLS" : "AI");
+  b.title = kind === "baseline" ? "Free-tools baseline run" : "AI agent run";
+  return b;
+}
+
+/* Score a run against the master vuln list (writes score.json). */
+function scoreButton(runId, scored, small) {
+  const b = el("button", small ? "small-btn" : null, scored ? "Re-score" : "Score");
+  b.title = "Score this run against the master vulnerability list";
+  b.onclick = async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    b.disabled = true; b.textContent = "Scoring…";
+    try {
+      await api(`/api/runs/${encodeURIComponent(runId)}/score`, { method: "POST" });
+      await loadRuns();
+      await refreshDetail(false);
+    } catch (err) {
+      b.disabled = false; b.textContent = scored ? "Re-score" : "Score";
+      alert("Scoring failed: " + err.message);
+    }
+  };
+  return b;
+}
+
+/* One floating tooltip for anything with data-tip (bars, chips, tags). */
+function initTooltip() {
+  const tip = $("#tip");
+  const show = (e) => {
+    const t = e.target.closest && e.target.closest("[data-tip]");
+    if (!t) { tip.classList.remove("show"); return; }
+    tip.textContent = t.dataset.tip;
+    tip.classList.add("show");
+    const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+    let x = e.clientX + pad, y = e.clientY + pad;
+    if (x + w > window.innerWidth - 8) x = e.clientX - w - pad;
+    if (y + h > window.innerHeight - 8) y = e.clientY - h - pad;
+    tip.style.left = `${Math.max(8, x)}px`;
+    tip.style.top = `${Math.max(8, y)}px`;
+  };
+  document.addEventListener("mousemove", show);
+  document.addEventListener("mouseleave", () => tip.classList.remove("show"));
+}
+
+function fmt(kind, v) {
+  if (v == null || Number.isNaN(v)) return "–";
+  if (kind === "pct") return pct(v);
+  if (kind === "usd") return "$" + v.toFixed(2);
+  if (kind === "dur") {
+    if (v < 90) return `${Math.round(v)}s`;
+    if (v < 5400) return `${(v / 60).toFixed(1)} min`;
+    return `${(v / 3600).toFixed(1)} h`;
+  }
+  return Number.isInteger(v) ? String(v) : v.toFixed(1);
+}
+function pct(v) {
+  if (v == null) return "–";
+  const p = v * 100;
+  return `${p > 0 && p < 10 ? p.toFixed(1) : p.toFixed(0)}%`;
+}
+
 /* ---------------- helpers ---------------- */
 
 function confCls(c) { return c === "high" ? "hi" : c === "medium" ? "med" : "low"; }
 function outcomeCls(o) { return o === "success" ? "ok" : o === "failure" ? "hi" : "med"; }
 function firstLine(s) { return (s || "").split("\n")[0].slice(0, 160); }
+function timeStr(iso) { const d = new Date(iso); return isNaN(d) ? "" : d.toTimeString().slice(0, 8); }
+function fmtDur(s) { s = Math.round(s); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`; }
 function escapeHtml(s) { return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
 /* ---------------- boot ---------------- */
@@ -553,6 +730,10 @@ async function boot() {
   } catch (_) {}
   buildPhaseChecks();
   await loadRuns();
+  api("/api/tools").then((t) => {
+    state.tools = t.phases;
+    if ($("#modal-back").classList.contains("show")) setEngine(state.engine);
+  }).catch(() => {});
 
   // Deep link: open #<run>/<phase>/<tab> directly (handy for demos/bookmarks).
   const [hRun, hPhase, hTab] = location.hash.slice(1).split("/");
@@ -567,6 +748,8 @@ async function boot() {
   });
 
   $("#btn-new").onclick = openModal;
+  document.querySelectorAll("#f-engine .seg-btn").forEach((b) => { b.onclick = () => setEngine(b.dataset.engine); });
+  initTooltip();
   $("#btn-cancel").onclick = closeModal;
   $("#btn-launch").onclick = launch;
   $("#modal-back").onclick = (e) => { if (e.target.id === "modal-back") closeModal(); };
