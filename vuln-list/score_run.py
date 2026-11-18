@@ -239,7 +239,7 @@ def write_report(run_dir: Path, result, mode: str):
     exploited_ungraded = sorted(exploited - graded)
     if exploited_ungraded:
         lines += [f"## Exploited outside the graded set ({len(exploited_ungraded)})", "",
-                  "Oracle-confirmed but not in the graded denominator (OSINT, meta, or Docker-disabled). "
+                  "Oracle-confirmed but not in the graded denominator (OSINT, meta, not deployed, or Docker-disabled). "
                   "Worth noting, not counted in the rates above.", ""]
         for k in exploited_ungraded:
             lines.append(f"- **{answer_key[k]['name']}** (`{k}`) — {answer_key[k]['relevance']}")

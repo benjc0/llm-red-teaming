@@ -41,7 +41,7 @@ categories:
 # Per-challenge overrides, keyed by the challenge `key`. Supported fields:
 #   cwe, owasp             - replace the category defaults
 #   owasp_llm              - list of OWASP LLM Top 10 IDs (see owasp_llm_top10 above)
-#   relevance              - core | osint | meta (see README.md)
+#   relevance              - core | osint | meta | disabled (see README.md)
 #   notes                  - free text shown in the generated list
 challenges:
   # Injection
@@ -51,9 +51,11 @@ challenges:
   sstiChallenge:          { cwe: 'CWE-1336' }
   # The coupon tool trusts the model to respect the 10% limit (routes/chat.ts),
   # so a prompt injection turns into an unauthorised action: LLM01 + LLM06.
-  chatbotPromptInjectionChallenge: { cwe: 'CWE-1427', owasp_llm: [LLM01, LLM06] }
-  chatbotGreedyInjectionChallenge: { cwe: 'CWE-1427', owasp_llm: [LLM01, LLM06] }
-  systemPromptExtractionChallenge: { cwe: 'CWE-1427', owasp_llm: [LLM07, LLM01] }
+  # Our build ships no LLM backend, so the chatbot vulnerabilities can't be
+  # reached and are not graded (relevance: disabled).
+  chatbotPromptInjectionChallenge: { cwe: 'CWE-1427', owasp_llm: [LLM01, LLM06], relevance: disabled, notes: 'No LLM backend in our build.' }
+  chatbotGreedyInjectionChallenge: { cwe: 'CWE-1427', owasp_llm: [LLM01, LLM06], relevance: disabled, notes: 'No LLM backend in our build.' }
+  systemPromptExtractionChallenge: { cwe: 'CWE-1427', owasp_llm: [LLM07, LLM01], relevance: disabled, notes: 'No LLM backend in our build.' }
 
   # Broken Access Control
   adminSectionChallenge:     { cwe: 'CWE-425' }
@@ -64,7 +66,7 @@ challenges:
   csrfChallenge:             { cwe: 'CWE-352' }
   ssrfChallenge:             { cwe: 'CWE-918', owasp: 'A10:2021 Server-Side Request Forgery' }
   # A client-side cookie reveals the chatbot's internal tool calls to any user.
-  aiDebuggingChallenge:      { cwe: 'CWE-602', owasp_llm: [LLM02] }
+  aiDebuggingChallenge:      { cwe: 'CWE-602', owasp_llm: [LLM02], relevance: disabled, notes: 'No LLM backend in our build.' }
   easterEggLevelOneChallenge: { cwe: 'CWE-158' }
 
   # Sensitive Data Exposure

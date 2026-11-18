@@ -161,6 +161,9 @@ class RunStore:
                 "state": state,
                 "error": (mp or {}).get("error"),
                 "usage": (mp or {}).get("usage"),
+                "duration_s": (mp or {}).get("duration_s"),
+                "started_at": (mp or {}).get("started_at"),
+                "ended_at": (mp or {}).get("ended_at"),
                 "has_findings": findings_exists,
             })
 
@@ -199,6 +202,9 @@ class RunStore:
             findings = _read_json(run_dir / p["phase"] / "findings.json")
             detail["phases"].append({**p, "findings": findings})
         detail["report_available"] = (run_dir / "reporting" / "report.md").is_file()
+        detail["exec_report"] = {
+            fmt: (run_dir / f"exec-report.{fmt}").is_file() for fmt in ("pdf", "html", "md")
+        }
         return detail
 
     def report_markdown(self, run_id: str) -> Optional[str]:
@@ -231,8 +237,11 @@ class RunStore:
         seq = 0
         complete = False
         for raw in self._iter_lines(log_path):
+            ts = self._line_ts(raw)
             for ev in self._events_from_line(raw):
                 seq += 1
+                if ts and "ts" not in ev:
+                    ev["ts"] = ts
                 if ev.get("_type") == "result":
                     complete = True
                 if seq <= after:
@@ -253,6 +262,16 @@ class RunStore:
                         yield line
         except OSError:
             return
+
+    @staticmethod
+    def _line_ts(raw: str) -> Optional[str]:
+        """The ISO timestamp a log line carries, if any: AI stream-json uses
+        'timestamp', the free-tools baseline uses 'ts'."""
+        try:
+            e = json.loads(raw)
+        except ValueError:
+            return None
+        return e.get("timestamp") or e.get("ts")
 
     @staticmethod
     def _events_from_line(raw: str) -> list[dict]:
@@ -387,6 +406,8 @@ def _guess_type(name: str) -> str:
         return "text/html; charset=utf-8"
     if lower.endswith((".xml",)):
         return "application/xml; charset=utf-8"
+    if lower.endswith(".pdf"):
+        return "application/pdf"
     if lower.endswith((".md", ".txt", ".yml", ".yaml", ".log", ".jsonl", ".csv")):
         return "text/plain; charset=utf-8"
     return "application/octet-stream"

@@ -56,6 +56,18 @@ def test_graded_denominator_is_the_core_in_docker_set():
     assert "xxeFileDisclosureChallenge" not in result["graded"]  # Docker-disabled
 
 
+def test_llm_chatbot_entries_are_not_graded():
+    # Our build ships no LLM backend, so the chatbot vulnerabilities can't be
+    # reached by either engine and must not count against them.
+    result = score_run.score(SAMPLE)
+
+    chatbot = {"chatbotPromptInjectionChallenge", "chatbotGreedyInjectionChallenge",
+               "systemPromptExtractionChallenge", "aiDebuggingChallenge"}
+    for key in chatbot:
+        assert result["answer_key"][key]["relevance"] == "disabled"
+    assert not chatbot & result["graded"]
+
+
 def test_score_json_matches_compare_contract(tmp_path):
     import shutil
     import compare_runs

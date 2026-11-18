@@ -11,7 +11,6 @@
     <div class="brand">APT<span class="tag">Automated Pentesting console</span></div>
     <div class="spacer"></div>
     <div class="conn" id="conn"><span class="dot"></span><span id="conn-txt">connected</span></div>
-    <button id="btn-compare" title="Compare the AI agent with free pentest tools">⇄ Compare AI vs tools</button>
     <button class="primary" id="btn-new">+ New run</button>
   </header>
 
@@ -64,6 +63,11 @@
       <div class="field ai-only">
         <label>Model (optional)</label>
         <input type="text" id="f-model" placeholder="claude-opus-4-8">
+      </div>
+      <div class="field ai-only">
+        <label>Custom prompts (optional)</label>
+        <input type="text" id="f-prompts" placeholder="./my-prompts.yml">
+        <div class="hint">Path to a prompt file overriding per-phase objective/guidance. Omitted phases keep the defaults. Generate a template with <code>python3 -m apt --dump-prompts prompts.yml</code>.</div>
       </div>
       <div class="field">
         <label>Grading token (optional)</label>

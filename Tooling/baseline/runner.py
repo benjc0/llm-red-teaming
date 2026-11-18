@@ -281,6 +281,7 @@ def run_phase(cfg: BaselineConfig, phase: Phase, prior: list[FindingsBase],
     routes = _routes_from(prior)
     tool_outputs: dict[str, str] = {}
     started = time.time()
+    started_iso = datetime.now(timezone.utc).isoformat()
 
     with open(log_path, "w", encoding="utf-8") as log:
         solved_before = fetch_solved_map(cfg) if phase == Phase.exploitation else None
@@ -305,7 +306,9 @@ def run_phase(cfg: BaselineConfig, phase: Phase, prior: list[FindingsBase],
         (phase_dir / "findings.json").write_text(
             findings.model_dump_json(indent=2), encoding="utf-8")
     return findings, {"phase": phase.value, "tools": list(tool_outputs),
-                      "duration_s": duration, "ok": findings is not None}
+                      "duration_s": duration, "ok": findings is not None,
+                      "started_at": started_iso,
+                      "ended_at": datetime.now(timezone.utc).isoformat()}
 
 
 def _prepare_tool(name: str, cfg: BaselineConfig, raw_dir: Path, prior: list[FindingsBase],
@@ -463,6 +466,7 @@ def _write_manifest(cfg: BaselineConfig, phase_records: list[dict]) -> None:
         "phases": [
             {"phase": r["phase"], "ok": r["ok"], "tools": r["tools"],
              "duration_s": r["duration_s"],
+             "started_at": r.get("started_at"), "ended_at": r.get("ended_at"),
              "findings": str(cfg.out_root / cfg.run_id / r["phase"] / "findings.json")
              if r["ok"] else None,
              "log": str(cfg.out_root / cfg.run_id / "logs" / f"{r['phase']}.jsonl")}

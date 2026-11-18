@@ -86,7 +86,7 @@ Juice Shop already records every vulnerability it contains. We generate the list
 |---|---|
 | `key` | Unique ID, taken from Juice Shop. Use it to refer to an entry in scoring sheets. |
 | `category`, `difficulty` | Juice Shop's own category and difficulty (1–6). Difficulty measures how hard the vulnerability is to exploit, not how severe it is. |
-| `relevance` | `core`: a real vulnerability that can be found from the app itself. `osint`: needs outside information, such as a user's social media, to guess a password or security answer. `meta`: a game mechanic or puzzle, not a vulnerability. |
+| `relevance` | `core`: a real vulnerability that can be found from the app itself. `osint`: needs outside information, such as a user's social media, to guess a password or security answer. `meta`: a game mechanic or puzzle, not a vulnerability. `disabled`: a real vulnerability in a feature our build doesn't deploy (the LLM chatbot), so neither engine can reach it. |
 | `available_in_docker` | `false` means Juice Shop's safety mode switches this code path off inside Docker, so the vulnerability doesn't exist in our container. Setting `challenges.safetyMode: disabled` in the config turns these back on. |
 | `owasp_top10` | OWASP Top 10 (2021) entry for web vulnerabilities. It's an industry-standard label, so a finding can match on it even when the AI words it differently. |
 | `owasp_llm_top10` | OWASP Top 10 for LLM Applications (2025) entries, listed only for the chatbot vulnerabilities. One vulnerability can map to several; for example, the coupon prompt injection is LLM01 (the injection) and LLM06 (the coupon tool trusts the model to enforce the 10% limit). |
@@ -107,7 +107,7 @@ The sponsor plan has an AI agent pentest the whole site in phases: recon, enumer
 | Mitigation playbook (Cycle 3) | Grade each proposed fix against `reference_fix` and `mitigation_url` (`mitigation_correct`). |
 | AI implements the fixes, then full re-assessment (Cycle 3) | Re-run the same exploit. If it now fails, set `fix_verified` to `yes`. Also check the site still works. Comparing the sheets from before and after the fixes gives the before/after metrics. |
 
-The chatbot is part of the site, so its vulnerabilities are graded like everything else. They also carry OWASP LLM Top 10 labels, and `master-vuln-list.md` shows which LLM risks the app covers. Chatbot answers vary between runs, so try each chatbot exploit several times before marking it failed.
+Our build ships no LLM backend, so the four chatbot vulnerabilities are marked `relevance: disabled` and left out of every rate. They keep their OWASP LLM Top 10 labels so the list still documents them; to grade them again, deploy an LLM backend and set their relevance back to `core` in `overrides.yml`.
 
 ### Before the white-box run
 
@@ -117,7 +117,17 @@ Giving the agent `juice-shop-copy/` as-is would hand it the answers, because the
 - `// vuln-code-snippet` comments that mark the vulnerable lines.
 - `AGENTS.md`, `.claude/`, `.cursor/` and the other AI-assistant folders, which tell an AI agent this is OWASP Juice Shop.
 
-Give the agent a cleaned copy with these removed. Also check whether the GitHub repo is public: if it is, an agent with web access can find this answer key.
+It also contains the test suite (which solves every challenge), the challenge translations in `data/static/i18n/`, `SOLUTIONS.md`, and solve checks that name each vulnerability (`challenges.unionSqlInjectionChallenge`).
+
+`Tooling/sanitize_source.py` builds the cleaned copy: it removes those files, strips the markers, blanks the solve-detection code (keeping every line number, so white-box `file:line` evidence points at the same line here), renames every challenge key to an opaque id, then audits the result and fails if any key, description or marker survived:
+
+```bash
+cd Tooling
+python3 sanitize_source.py            # writes ./clean-source (use --force to rebuild)
+python3 -m apt --target http://127.0.0.1:3000 --mode white-box --source ./clean-source
+```
+
+One residual is documented, not hidden: the solve-check call sites remain (anonymised), so a code reader can still see that some code is instrumented. Also check whether the GitHub repo is public: if it is, an agent with web access can find this answer key.
 
 ## How to score an AI pentest run
 

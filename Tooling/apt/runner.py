@@ -24,12 +24,13 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from pydantic import ValidationError
 
 from . import phases as phase_defs
+from . import prompts
 from .schema import FindingsBase, Phase
 
 # The agent must never see the grading token: it is the only thing standing
@@ -61,6 +62,7 @@ class RunConfig:
     dry_run: bool = False
     claude_bin: str = CLAUDE_BIN
     grading_token: str | None = None  # for the solve oracle; defaults to $APT_GRADING_TOKEN
+    prompt_overrides: dict | None = None  # per-phase {objective?, guidance?}; defaults when None
 
     def __post_init__(self) -> None:
         if not self.run_id:
@@ -80,6 +82,8 @@ class PhaseResult:
     error: str | None = None
     usage: dict | None = None
     duration_s: float | None = None  # wall time, stamped by run_pipeline
+    started_at: str | None = None    # ISO-8601 UTC wall-clock, stamped by run_pipeline
+    ended_at: str | None = None
 
 
 _USAGE_FIELDS = ("input_tokens", "output_tokens",
@@ -144,11 +148,12 @@ def _prior_block(prior: list[FindingsBase]) -> str:
 
 def build_prompt(cfg: RunConfig, spec: phase_defs.PhaseSpec,
                  prior: list[FindingsBase], retry_note: str = "") -> str:
+    objective, guidance = prompts.effective(spec, cfg.prompt_overrides)
     blocks = [
         f"You are the {spec.title} phase of an autonomous penetration test.",
         _rules_of_engagement(cfg),
-        f"OBJECTIVE\n{spec.objective}",
-        "GUIDANCE\n" + "\n".join(f"- {g}" for g in spec.guidance),
+        f"OBJECTIVE\n{objective}",
+        "GUIDANCE\n" + "\n".join(f"- {g}" for g in guidance),
         _prior_block(prior),
         _schema_block(spec),
     ]
@@ -313,7 +318,10 @@ def run_pipeline(cfg: RunConfig) -> list[PhaseResult]:
     for phase in cfg.phases:
         started = time.monotonic()
         result = run_phase(cfg, phase, prior)
+        now = datetime.now(timezone.utc)
         result.duration_s = round(time.monotonic() - started, 2)
+        result.ended_at = now.isoformat()
+        result.started_at = (now - timedelta(seconds=result.duration_s)).isoformat()
         results.append(result)
         if not result.ok:
             if phase_defs.PHASES[phase].optional:
@@ -383,6 +391,8 @@ def _write_manifest(cfg: RunConfig, results: list[PhaseResult]) -> None:
                 "phase": r.phase.value,
                 "ok": r.ok,
                 "duration_s": r.duration_s,
+                "started_at": r.started_at,
+                "ended_at": r.ended_at,
                 "findings": str(r.findings_path) if r.ok and r.findings else None,
                 "log": str(r.log_path),
                 "error": r.error,

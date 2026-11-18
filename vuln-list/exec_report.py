@@ -41,6 +41,10 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
+import shutil
+import subprocess
+import tempfile
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
@@ -560,6 +564,14 @@ def render_html(
   footer {{ margin-top:30px; padding-top:16px; border-top:1px solid var(--line);
     color:var(--muted); font-size:12.5px; }}
   @media (max-width:560px) {{ .stats {{ grid-template-columns:repeat(2,1fr); }} }}
+  @media print {{
+    body {{ background:#fff; }}
+    .wrap {{ max-width:none; margin:0; padding:0; }}
+    * {{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }}
+    h2 {{ page-break-after:avoid; }}
+    .verdict, .stat, .finding, table, tr {{ page-break-inside:avoid; }}
+    @page {{ margin:14mm 13mm; }}
+  }}
 </style>
 </head>
 <body>
@@ -612,6 +624,58 @@ def render_html(
 """
 
 
+# --- PDF rendering ----------------------------------------------------------
+
+# Chromium/Chrome binaries we try, in order. The env var wins if set.
+_CHROME_CANDIDATES = [
+    "chromium", "chromium-browser", "google-chrome", "google-chrome-stable", "chrome",
+]
+
+
+def find_chrome() -> str | None:
+    env = os.environ.get("APT_CHROME") or os.environ.get("CHROME")
+    if env and shutil.which(env):
+        return shutil.which(env)
+    for name in _CHROME_CANDIDATES:
+        path = shutil.which(name)
+        if path:
+            return path
+    return None
+
+
+def render_pdf(html_path: Path, chrome: str | None = None) -> Path | None:
+    """Render an HTML report to a PDF next to it, using headless Chromium.
+
+    Returns the PDF path, or None if no browser was found (not fatal -- the
+    HTML is still there to print by hand).
+    """
+    chrome = chrome or find_chrome()
+    if not chrome:
+        print("No Chromium/Chrome found; skipping PDF. "
+              "Install chromium or set APT_CHROME, or open the HTML and print to PDF.")
+        return None
+    pdf_path = html_path.with_suffix(".pdf")
+    # A throwaway profile dir keeps the render from touching the user's profile.
+    with tempfile.TemporaryDirectory(prefix="apt-pdf-") as profile:
+        cmd = [
+            chrome, "--headless", "--no-sandbox", "--disable-gpu",
+            f"--user-data-dir={profile}",
+            "--no-pdf-header-footer",            # drop the date/URL chrome adds
+            f"--print-to-pdf={pdf_path}",
+            html_path.resolve().as_uri(),
+        ]
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            print(f"PDF render failed ({exc}); the HTML report is still available.")
+            return None
+    if not pdf_path.is_file():
+        # Older Chrome spells the flag --print-to-pdf-no-header; retry once.
+        print(f"PDF render produced no file; Chrome said: {proc.stderr.strip()[:200]}")
+        return None
+    return pdf_path
+
+
 # --- command line ----------------------------------------------------------
 
 
@@ -624,6 +688,8 @@ def main() -> None:
     parser.add_argument("--client", default=None, help="client/organization name for the header")
     parser.add_argument("--engagement", default=None, help="engagement name/label for the header")
     parser.add_argument("--no-html", action="store_true", help="write only the Markdown report")
+    parser.add_argument("--no-pdf", action="store_true",
+                        help="skip the PDF (by default the HTML is also rendered to exec-report.pdf)")
     args = parser.parse_args()
 
     result = score_run.score(args.run_dir)
@@ -650,6 +716,11 @@ def main() -> None:
         html_path = args.run_dir / "exec-report.html"
         html_path.write_text(html_doc, encoding="utf-8")
         print(f"Wrote {html_path}")
+
+        if not args.no_pdf:
+            pdf_path = render_pdf(html_path)
+            if pdf_path:
+                print(f"Wrote {pdf_path}")
 
     graded = result["graded"]
     crit = sum(1 for f in findings if f["severity"] == "Critical")

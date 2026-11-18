@@ -137,6 +137,15 @@ class Launcher:
             cmd += ["--retries", str(int(params["retries"]))]
         if params.get("unattended"):
             cmd += ["--unattended"]
+        prompts_file = (params.get("prompts") or "").strip()
+        if prompts_file:
+            # The subprocess runs with cwd=tooling_dir, so a relative path is
+            # resolved there; validate it exists before launching.
+            p = Path(prompts_file)
+            check = p if p.is_absolute() else (self.tooling_dir / p)
+            if not check.is_file():
+                raise LaunchError(f"Prompt file not found: {prompts_file}")
+            cmd += ["--prompts", prompts_file]
         return cmd, run_id
 
     # -- launching ----------------------------------------------------------

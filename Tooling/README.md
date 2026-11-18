@@ -10,6 +10,7 @@ Our products name: APT (Automated Pentesting)
 | `apt_gui/` | A local, browser-based console that reads the run directory and launches runs. Zero dependencies. See `apt_gui/README.md`. |
 | `preflight.py` | Environment check (OS-agnostic). Verifies Claude Code is present, runnable and authenticated. Replaces `setup.sh`. |
 | `verify_oracle.py` | Oracle smoke test (OS-agnostic). Fires one known exploit and confirms the server-side solve tracker flips. Replaces `verify_oracle.sh`. |
+| `sanitize_source.py` | Builds `clean-source/`, the answer-key-free source tree white-box runs need. Audits its own output. See `vuln-list/README.md`. |
 | `tests/` | `pytest` suite for the orchestrator and the GUI's run-directory reader. |
 | `runs/` | Output, one directory per run. |
 
@@ -75,16 +76,19 @@ docker run -d --rm --memory 1g -p 127.0.0.1:3000:3000 -e APT_GRADING_TOKEN \
 python3 -m baseline --target http://127.0.0.1:3000 --phases all --mode black-box
 docker stop juice-shop
 
-# --- Compare -----------------------------------------------------------------
-python3 -m apt_gui                # ⇄ Compare AI vs tools
+# --- Compare (for the report / presentation, not the console) ----------------
+python3 vuln-list/compare_runs.py runs/<ai-run> runs/<base-run> --out comparisons/blackbox
+# writes comparison.md (the table for the report) + comparison.json
 ```
 
 The same runs can be launched from the GUI (**+ New run**, Engine AI agent / Free
 tools, Phases *all*, paste the grading token). Restart the container between the
 two either way. Don't Ctrl-C the GUI while a run it launched is going; that
 stops the run too. Both runs score themselves when they finish; if one doesn't,
-use its **Score** button. For a ± spread, repeat each side 2–3 times (fresh
-container each time) and tick all of them in the Compare picker.
+use its **Score** button. The AI-vs-tools comparison itself is produced on the
+command line with `compare_runs.py` (above) for the written report — for a ±
+spread, repeat each side 2–3 times (fresh container each time) and pass all the
+run directories. See `Documents/2026-11-17-zap-vs-ai-case-study.md`.
 
 `--unattended` lets the agent run tools without approval prompts. Use it only in
 an isolated VM whose network reaches nothing but the target.

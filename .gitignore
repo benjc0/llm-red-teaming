@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 Tooling/runs/
+Tooling/clean-source/
 
 # Python virtual environment
 .venv/

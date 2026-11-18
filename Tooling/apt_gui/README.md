@@ -37,59 +37,38 @@ The orchestrator (`apt/`) must be importable from `Tooling/` and runnable
   `logs/<phase>.jsonl` stream: each shell command, file write, tool result and
   the agent's reasoning, as collapsible rows. Bookkeeping/system events are
   filtered out.
-- **Report** — the generated `reporting/report.md`.
-- **Compare AI vs tools** — see below.
+- **Report** — the generated `reporting/report.md`, plus an **Executive report**
+  bar that generates `exec-report.{md,html,pdf}` and links to each.
+- **Score** — a run is scored against the answer key with the **Score** button
+  (or automatically by the runners); `score.json` drives the score line shown in
+  the list and detail.
 
-## Comparing the AI with free tools
-
-The **⇄ Compare AI vs tools** button (or `#compare`) puts AI runs next to runs of
-the free-tools baseline (`../baseline/`). Both kinds attack the same target
-through the same seven phases, write the same `findings.json`, and are scored
-against the same answer key, so the numbers are directly comparable.
-
-Start a free-tools run from **+ New run → Engine: Free tools** (needs Docker;
-nmap, Arjun and Retire.js run natively if installed). Missing tools are skipped
-and logged, never fatal. A run must be **scored** (`score.json`) to be compared.
-Both runners score automatically, and unscored runs get a **Score** button.
-
-**Tools per phase**
-
-| Phase | Free tools | What they cover |
-|---|---|---|
-| Recon | nmap, WhatWeb | services/versions, tech stack |
-| Enumeration | Katana, ffuf, Arjun | JS-aware crawl, content discovery, hidden parameters |
-| Vulnerability assessment | ZAP (baseline), Nuclei, Nikto, Retire.js, Semgrep (white-box) | DAST, known-CVE templates, server misconfig, outdated JS libraries (OWASP A06), SAST |
-| Exploitation | sqlmap, ZAP active scan | SQL injection, active attack payloads; credited via the solve-oracle delta |
-| Post-exploitation / reporting / mitigation | *derived* | no real free-tool equivalent; built from earlier output and labelled "derived" in the view |
-
-**What it measures**
-
-- *Effectiveness* (answer key): detection rate, exploitation rate (oracle-
-  confirmed, so ground truth), precision, F1, confirmed exploits, false positives.
-- *Efficiency*: cost, wall time, cost per confirmed exploit, time per confirmed exploit.
-- *Consistency*: pick several runs per side and each metric shows mean ± spread.
-- *Per phase*: what each side used (the AI's shell programs are read from its
-  logs) and produced (services, routes, parameters, findings, attempts…), with time and cost.
-- *Coverage*: hit rate per OWASP Top 10 category and per difficulty, for
-  exploits or detections.
-- *Overlap*: which vulnerabilities only the AI found, both found, only the
-  tools found, and what both missed, listed by name.
-
-**Layout, top to bottom:** run picker (AI runs | tool runs) → caveat banners (e.g.
-the sides ran different phases, so total time/cost aren't like-for-like) →
-headline tiles (only-AI / both / only-tools / both-missed) → scorecard of paired
-bars with a "who's ahead" verdict per metric → phase-by-phase table → coverage
-bars → named overlap. **↓ comparison.md** downloads the same table
-`vuln-list/compare_runs.py` writes, ready for the written report.
+Both the AI (`+ New run → Engine: AI agent`) and the free-tools baseline
+(`Engine: Free tools`; needs Docker) can be launched from here; they appear in
+the same list, tagged **AI** or **TOOLS**.
 
 While a run is live the view polls and updates: the pipeline advances, the
 activity feed tails, and structured findings snap in as each phase completes.
 
+## Comparing the AI with the free tools
+
+The AI-vs-tools comparison is **not part of the console** — it is produced for
+the written report and the presentation. Score an AI run and a free-tools run
+(same target, same mode, fresh container each), then:
+
+```bash
+python3 vuln-list/compare_runs.py Tooling/runs/<ai-run> Tooling/runs/<base-run> \
+    --out comparisons/blackbox
+```
+
+which writes `comparison.md` (the table for the report) and `comparison.json`.
+See `Documents/2026-11-17-zap-vs-ai-case-study.md` for the focused ZAP-vs-AI
+write-up.
+
 ### Deep links
 
 `#<run>/<phase>/<tab>` opens straight to a view, e.g.
-`#20261016-194900/exploitation/activity`. `#compare/<run>,<run>` opens a
-specific comparison. Handy for demos and bookmarks.
+`#20261016-194900/exploitation/activity`. Handy for demos and bookmarks.
 
 ## Scope (v1)
 
@@ -108,7 +87,7 @@ specific comparison. Handy for demos and bookmarks.
 |---|---|
 | `runstore.py` | Read-only parse of the run directory into API dicts. No pydantic. |
 | `launcher.py` | Validates launch params and spawns `python -m apt` or `python -m baseline`. |
-| `compare.py` | AI-vs-tools comparison: per-phase stats, grouping via `vuln-list/compare_runs.py`, scoring from the GUI. |
+| `compare.py` | GUI helpers that shell out to the vuln-list tools (score a run, generate the executive report) plus the free-tool lineup for the run form. |
 | `server.py` | Standard-library HTTP router: JSON API + static files. |
 | `cli.py` | `python3 -m apt_gui` entrypoint. |
 | `static/` | The single-page frontend (`index.html`, `app.js`, `styles.css`). |

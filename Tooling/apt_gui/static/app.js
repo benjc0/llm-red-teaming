@@ -16,10 +16,8 @@ const state = {
   activity: { phase: null, lastSeq: 0, events: [], complete: false },
   openEvents: new Set(),  // event seqs expanded in the activity view
   polling: null,
-  view: "run",            // run | compare
   engine: "ai",           // new-run modal engine: ai | baseline
   tools: null,            // /api/tools (free-tool lineup per phase)
-  compare: { picked: null, data: null, cov: "exploitation", loading: false, error: null },
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -63,7 +61,7 @@ function renderRunList() {
     return;
   }
   for (const r of state.runs) {
-    const row = el("div", "runrow" + (state.view === "run" && r.run_id === state.selectedRun ? " sel" : ""));
+    const row = el("div", "runrow" + (r.run_id === state.selectedRun ? " sel" : ""));
     const top = el("div");
     top.style.display = "flex";
     top.style.justifyContent = "space-between";
@@ -98,20 +96,12 @@ function renderRunList() {
 
 function syncHash() {
   // Shareable route: #<run>/<phase>/<tab> — handy for demo/bookmark links.
-  // The comparison lives at #compare/<run,run,...>.
-  if (state.view === "compare") {
-    const ids = state.compare.picked ? [...state.compare.picked].join(",") : "";
-    const h = "#compare" + (ids ? "/" + ids : "");
-    if (location.hash !== h) history.replaceState(null, "", h);
-    return;
-  }
   const parts = [state.selectedRun, state.selectedPhase, state.tab].filter(Boolean);
   const h = "#" + parts.join("/");
   if (location.hash !== h) history.replaceState(null, "", h);
 }
 
 async function selectRun(runId, wantPhase, wantTab) {
-  state.view = "run";
   state.selectedRun = runId;
   state.selectedPhase = wantPhase || null;
   if (wantTab) state.tab = wantTab;
@@ -157,12 +147,6 @@ function renderDetail() {
   head.appendChild(el("span", "badge " + d.status, d.status));
   const actions = el("span", "head-actions");
   if (d.scorable) actions.appendChild(scoreButton(d.run_id, d.scored));
-  if (d.scored) {
-    const cmp = el("button", null, "⇄ Compare");
-    cmp.title = "Open this run in the AI-vs-tools comparison";
-    cmp.onclick = () => openCompare(null, d.run_id);
-    actions.appendChild(cmp);
-  }
   head.appendChild(actions);
   c.appendChild(head);
 
@@ -193,6 +177,8 @@ function renderDetail() {
     const node = el("div", `pnode ${p.state}` + (p.phase === state.selectedPhase ? " sel" : ""));
     node.appendChild(el("div", "pname", p.title));
     node.appendChild(el("div", "pstate", p.state));
+    if (p.duration_s != null) node.appendChild(el("div", "pdur", fmtDur(p.duration_s)));
+    if (p.started_at) node.title = `started ${timeStr(p.started_at)}` + (p.ended_at ? ` · ended ${timeStr(p.ended_at)}` : "");
     node.onclick = () => { state.selectedPhase = p.phase; renderDetail(); syncHash(); loadActivityIfNeeded(true); };
     pipe.appendChild(node);
   }
@@ -418,6 +404,7 @@ function renderEvent(ev) {
   const row = el("div", "ev " + ev._type);
   if (ev._type === "tool_use") {
     const head = el("div", "ev-head");
+    if (ev.ts) head.appendChild(el("span", "ev-time", timeStr(ev.ts)));
     const caret = el("span", "ev-caret", state.openEvents.has(ev.seq) ? "▾" : "▸");
     head.appendChild(caret);
     head.appendChild(el("span", "tname", ev.tool));
@@ -429,6 +416,7 @@ function renderEvent(ev) {
     head.onclick = () => { toggleEvent(ev.seq); caret.textContent = state.openEvents.has(ev.seq) ? "▾" : "▸"; body.classList.toggle("hidden"); };
   } else if (ev._type === "tool_result") {
     const head = el("div", "ev-head");
+    if (ev.ts) head.appendChild(el("span", "ev-time", timeStr(ev.ts)));
     const caret = el("span", "ev-caret", state.openEvents.has(ev.seq) ? "▾" : "▸");
     head.appendChild(caret);
     head.appendChild(el("span", "tname" + (ev.is_error ? " err" : ""), ev.is_error ? "result ✗" : "result"));
@@ -440,12 +428,16 @@ function renderEvent(ev) {
     head.onclick = () => { toggleEvent(ev.seq); caret.textContent = state.openEvents.has(ev.seq) ? "▾" : "▸"; body.classList.toggle("hidden"); };
   } else if (ev._type === "baseline") {
     const head = el("div", "ev-head");
+    if (ev.ts) head.appendChild(el("span", "ev-time", timeStr(ev.ts)));
     head.appendChild(el("span", "tname" + (ev.is_error ? " err" : ""), ev.tool));
     head.appendChild(el("span", "muted", ev.event.replace(/^tool_/, "")));
     head.appendChild(el("span", "ev-label", ev.text));
     row.appendChild(head);
   } else {
-    row.appendChild(el("div", null, ev.text || ev._type));
+    const line = el("div");
+    if (ev.ts) line.appendChild(el("span", "ev-time", timeStr(ev.ts)));
+    line.appendChild(el("span", null, ev.text || ev._type));
+    row.appendChild(line);
   }
   return row;
 }
@@ -493,21 +485,55 @@ function renderReportPlaceholder(panel) {
   panel.id = "panel";
   panel.appendChild(el("div", "muted", "Loading report…"));
 }
+function execReportBar() {
+  // Executive report (for higher-ups): generate md/html/PDF, link to each.
+  const ex = (state.detail && state.detail.exec_report) || {};
+  const card = el("div", "card");
+  const row = el("div");
+  row.style.display = "flex";
+  row.style.alignItems = "center";
+  row.style.gap = "10px";
+  row.style.flexWrap = "wrap";
+  row.appendChild(el("b", null, "Executive report"));
+  const gen = el("button", null, ex.pdf ? "Regenerate" : "Generate PDF");
+  const status = el("span", "muted");
+  const raw = (f) => `/api/runs/${state.selectedRun}/raw?path=exec-report.${f}`;
+  gen.onclick = async () => {
+    gen.disabled = true; status.textContent = "generating… (scoring + rendering PDF)";
+    try {
+      const r = await api(`/api/runs/${state.selectedRun}/exec-report`, { method: "POST" });
+      await refreshDetail(false);
+      status.textContent = r.pdf ? "done" : "done (no PDF — install Chromium)";
+    } catch (e) { status.textContent = "failed: " + e.message; }
+    gen.disabled = false;
+    renderDetail(); loadReport();
+  };
+  row.appendChild(gen);
+  for (const f of ["pdf", "html", "md"]) {
+    if (ex[f]) { const a = el("a", "chip", "⬇ " + f.toUpperCase()); a.href = raw(f); a.target = "_blank"; row.appendChild(a); }
+  }
+  row.appendChild(status);
+  card.appendChild(row);
+  card.appendChild(el("div", "muted", "A short, higher-ups-appropriate summary: posture, risk-at-a-glance and a priority remediation roadmap, scored against the answer key."));
+  return card;
+}
+
 async function loadReport() {
   const panel = $("#panel");
   if (!panel) return;
+  panel.innerHTML = "";
+  panel.appendChild(execReportBar());
   try {
     const md = await api(`/api/runs/${state.selectedRun}/report`);
-    panel.innerHTML = "";
     const card = el("div", "card");
+    card.appendChild(el("div", "ctitle", "Technical report (reporting phase)"));
     const pre = el("div", "cbody");
     pre.style.fontFamily = "var(--mono)";
     pre.textContent = md;
     card.appendChild(pre);
     panel.appendChild(card);
   } catch (e) {
-    panel.innerHTML = "";
-    panel.appendChild(el("div", "empty", "No report.md for this run (run the reporting phase to generate one)."));
+    panel.appendChild(el("div", "muted", "No technical report.md for this run (run the reporting phase to generate one)."));
   }
 }
 
@@ -521,13 +547,14 @@ function stopPolling() { if (state.polling) { clearInterval(state.polling); stat
 
 async function tick() {
   await loadRuns();
-  if (state.view === "compare" || !state.selectedRun) return;
+  if (!state.selectedRun) return;
+  // A completed run is static: re-rendering it every tick would wipe whatever
+  // the open tab loaded (e.g. the report panel). Only refresh while it's live.
   const running = state.detail && state.detail.status === "running";
-  // Always refresh the list; refresh the open detail/activity when live (or occasionally).
+  if (!running) return;
   await refreshDetail(false);
-  if (state.tab === "activity" && (running || !state.activity.complete)) {
-    await loadActivityIfNeeded(false);
-  }
+  if (state.tab === "activity") await loadActivityIfNeeded(false);
+  else if (state.tab === "report") loadReport();
 }
 
 /* ---------------- new run modal ---------------- */
@@ -547,7 +574,7 @@ function setEngine(engine) {
   const info = $("#f-tools-info");
   info.innerHTML = "";
   if (engine !== "baseline") return;
-  info.appendChild(el("div", "hint", "Runs standard free tools through the same phases and writes the same findings format, so the run is scored and compared like an AI run. Needs Docker (nmap, Arjun and Retire.js run natively if installed). Missing tools are skipped and logged."));
+  info.appendChild(el("div", "hint", "Runs standard free tools through the same phases and writes the same findings format, so the run is scored like an AI run. Needs Docker (nmap, Arjun and Retire.js run natively if installed). Missing tools are skipped and logged."));
   info.appendChild(toolLineup());
 }
 
@@ -607,6 +634,7 @@ async function launch() {
     grading_token: $("#f-token").value.trim(),
     unattended: $("#f-unattended").checked,
     source: $("#f-source").value.trim(),
+    prompts: $("#f-prompts").value.trim(),
     engine: state.engine,
     dry_run: $("#f-dryrun").checked,
   };
@@ -622,483 +650,6 @@ async function launch() {
   }
 }
 
-/* ---------------- compare: AI agent vs. free tools ---------------- */
-
-/* Headline metrics, in display order. better = which direction wins.
-   rate metrics share a fixed 0–100% scale; the rest scale to the larger side. */
-const COMPARE_METRICS = [
-  { group: "Effectiveness — scored against the master vulnerability list" },
-  { k: "detection_rate", label: "Detection rate", fmt: "pct", better: "high", hint: "Graded vulnerabilities reported (recall)" },
-  { k: "exploitation_rate", label: "Exploitation rate", fmt: "pct", better: "high", hint: "Graded vulnerabilities confirmed by the server oracle (ground truth)" },
-  { k: "precision", label: "Precision", fmt: "pct", better: "high", hint: "Reported findings that matched a real vulnerability" },
-  { k: "f1", label: "F1 score", fmt: "pct", better: "high", hint: "Balance of precision and detection" },
-  { k: "exploited", label: "Confirmed exploits", fmt: "num", better: "high", hint: "Count of oracle-confirmed exploits" },
-  { k: "false_positives", label: "False positives", fmt: "num", better: "low", hint: "Findings that matched nothing in the answer key" },
-  { group: "Efficiency" },
-  { k: "cost_usd", label: "Cost", fmt: "usd", better: "low", hint: "Model spend; free tools cost $0 in licences" },
-  { k: "duration_s", label: "Wall time", fmt: "dur", better: "low", hint: "Total time across the phases that ran" },
-  { k: "cost_per_exploit", label: "Cost per confirmed exploit", fmt: "usd", better: "low", hint: "Cost ÷ confirmed exploits" },
-  { k: "time_per_exploit", label: "Time per confirmed exploit", fmt: "dur", better: "low", hint: "Wall time ÷ confirmed exploits" },
-];
-const SIDES = [
-  { key: "ai", label: "AI agent", cls: "ai" },
-  { key: "baseline", label: "Free tools", cls: "tools" },
-];
-
-async function openCompare(ids, includeRun) {
-  state.view = "compare";
-  stopPolling();
-  if (includeRun) ids = pairFor(includeRun);
-  if (ids && ids.length) state.compare.picked = new Set(ids);
-  renderRunList();
-  await loadCompare();
-  startPolling();
-}
-
-/* A run + the newest scored run of the other kind (same mode if possible). */
-function pairFor(runId) {
-  const r = state.runs.find((x) => x.run_id === runId);
-  if (!r) return [runId];
-  const other = state.runs.filter((x) => x.scored && x.kind !== r.kind);
-  const match = other.find((x) => x.mode === r.mode) || other[0];
-  return match ? [runId, match.run_id] : [runId];
-}
-
-async function loadCompare() {
-  const cs = state.compare;
-  cs.loading = true; cs.error = null;
-  renderCompare();
-  try {
-    const q = cs.picked ? "?runs=" + encodeURIComponent([...cs.picked].join(",")) : "";
-    cs.data = await api("/api/compare" + q);
-    if (!cs.picked) cs.picked = new Set(cs.data.run_ids);
-    setConn(true);
-  } catch (e) {
-    cs.error = e.message;
-  }
-  cs.loading = false;
-  syncHash();
-  renderCompare();
-}
-
-function renderCompare() {
-  const c = $("#content");
-  if (state.view !== "compare") return;
-  const keepScroll = c.scrollTop;
-  c.innerHTML = "";
-  const cs = state.compare;
-  const d = cs.data;
-
-  const head = el("div", "detail-head");
-  head.appendChild(el("h1", "plain", "AI agent vs. free tools"));
-  const actions = el("span", "head-actions");
-  if (d && d.ai && d.baseline) {
-    const md = el("a", "btn-link", "↓ comparison.md");
-    md.href = "/api/compare.md?runs=" + encodeURIComponent([...cs.picked].join(","));
-    md.download = "comparison.md";
-    md.title = "The same table compare_runs.py writes, ready for the written report";
-    actions.appendChild(md);
-  }
-  head.appendChild(actions);
-  c.appendChild(head);
-  c.appendChild(el("div", "detail-sub", "Same target, same seven phases, same findings format, scored against the same answer key. Pick runs of each kind below; several runs on one side are averaged (± shows run-to-run spread)."));
-
-  c.appendChild(renderPicker());
-
-  if (cs.error) { c.appendChild(el("div", "warn-box show", cs.error)); return; }
-  if (!d) { c.appendChild(el("div", "empty", cs.loading ? "Loading comparison…" : "")); return; }
-
-  const notes = [...(d.warnings || [])];
-  if (d.unscored && d.unscored.length) notes.push(`Not scored yet, so left out: ${d.unscored.join(", ")}. Use "Score" in the picker.`);
-  notes.forEach((n) => c.appendChild(el("div", "warn-box show note", n)));
-
-  if (!d.ai || !d.baseline) {
-    const missing = !d.ai && !d.baseline ? "an AI run and a free-tools run" : !d.ai ? "an AI run" : "a free-tools run";
-    const box = el("div", "card empty-card");
-    box.appendChild(el("div", "ctitle", `Pick ${missing} to compare`));
-    box.appendChild(el("div", "cbody", "Both sides need a scored run (it has score.json). No free-tools run yet? Start one from + New run → Free tools, or from the CLI: python3 -m baseline --target <url> --phases all."));
-    c.appendChild(box);
-    c.scrollTop = keepScroll;
-    return;
-  }
-
-  c.appendChild(renderSideHeaders(d));
-  c.appendChild(renderHeadlineTiles(d));
-  c.appendChild(renderScorecard(d));
-  c.appendChild(renderPhaseTable(d));
-  c.appendChild(renderCoverage(d));
-  c.appendChild(renderOverlap(d));
-  c.scrollTop = keepScroll;
-}
-
-/* -- run picker: AI runs | tool runs -- */
-function renderPicker() {
-  const card = el("div", "card picker");
-  const cols = el("div", "picker-cols");
-  for (const side of SIDES) {
-    const col = el("div", "picker-col");
-    const h = el("div", "picker-head");
-    h.appendChild(swatch(side.cls));
-    h.appendChild(el("span", null, side.label + " runs"));
-    col.appendChild(h);
-    const runs = state.runs.filter((r) => (r.kind === "baseline") === (side.key === "baseline"));
-    if (!runs.length) col.appendChild(el("div", "muted small", side.key === "baseline" ? "No free-tools runs yet." : "No AI runs yet."));
-    for (const r of runs) {
-      const row = el("label", "pick-row" + (r.scored ? "" : " unscored"));
-      const cb = el("input");
-      cb.type = "checkbox";
-      cb.disabled = !r.scored;
-      cb.checked = !!(state.compare.picked && state.compare.picked.has(r.run_id));
-      cb.onchange = () => {
-        if (!state.compare.picked) state.compare.picked = new Set();
-        if (cb.checked) state.compare.picked.add(r.run_id); else state.compare.picked.delete(r.run_id);
-        loadCompare();
-      };
-      row.appendChild(cb);
-      row.appendChild(el("span", "rid", r.run_id));
-      row.appendChild(el("span", "muted small", r.mode || ""));
-      if (r.scored) row.appendChild(el("span", "muted small push", `detect ${pct(r.detection_rate)} · exploit ${pct(r.exploitation_rate)}`));
-      else if (r.scorable) { const sp = el("span", "push"); sp.appendChild(scoreButton(r.run_id, false, true)); row.appendChild(sp); }
-      else {
-        const why = el("span", "muted small push", "can't score yet");
-        why.dataset.tip = "Scoring needs the Vulnerability Assessment or Exploitation phase. This run stopped before them.";
-        row.appendChild(why);
-      }
-      col.appendChild(row);
-    }
-    cols.appendChild(col);
-  }
-  card.appendChild(cols);
-  return card;
-}
-
-/* -- who is being compared -- */
-function renderSideHeaders(d) {
-  const wrap = el("div", "side-heads");
-  for (const side of SIDES) {
-    const g = d[side.key];
-    const box = el("div", "side-head");
-    const t = el("div", "side-title");
-    t.appendChild(swatch(side.cls));
-    t.appendChild(el("span", null, side.label));
-    t.appendChild(el("span", "muted small", `${g.trials} run${g.trials === 1 ? "" : "s"} · ${(g.modes || []).join(", ")}`));
-    box.appendChild(t);
-    const meta = el("div", "muted small");
-    meta.textContent = side.key === "ai"
-      ? `model: ${(g.models && g.models.length) ? g.models.join(", ") : "default"} · ${g.run_ids.join(", ")}`
-      : `tools: ${(g.tools || []).join(", ") || "none ran"} · ${g.run_ids.join(", ")}`;
-    box.appendChild(meta);
-    wrap.appendChild(box);
-  }
-  return wrap;
-}
-
-/* -- headline: what each side found that the other didn't -- */
-function renderHeadlineTiles(d) {
-  const ov = d.overlap || { detection: {}, exploitation: {} };
-  const n = (k, f) => ((ov[k] || {})[f] || []).length;
-  const tiles = [
-    { label: "Only the AI found", det: n("detection", "ai_only"), exp: n("exploitation", "ai_only"), cls: "ai" },
-    { label: "Both found", det: n("detection", "both"), exp: n("exploitation", "both"), cls: "both" },
-    { label: "Only the tools found", det: n("detection", "baseline_only"), exp: n("exploitation", "baseline_only"), cls: "tools" },
-    { label: "Both missed", det: (d.missed_by_both || []).length, exp: null, cls: "none" },
-  ];
-  const wrap = el("div", "tiles");
-  for (const t of tiles) {
-    const tile = el("div", "tile");
-    const lab = el("div", "tile-label");
-    lab.appendChild(swatch(t.cls));
-    lab.appendChild(el("span", null, t.label));
-    tile.appendChild(lab);
-    tile.appendChild(el("div", "tile-num", String(t.det)));
-    tile.appendChild(el("div", "muted small", t.exp == null
-      ? `of ${d.ai.graded_total || "?"} graded vulnerabilities`
-      : `detected · ${t.exp} oracle-confirmed exploit${t.exp === 1 ? "" : "s"}`));
-    wrap.appendChild(tile);
-  }
-  return wrap;
-}
-
-/* -- scorecard: paired bars per metric -- */
-function renderScorecard(d) {
-  const card = el("div", "card section");
-  card.appendChild(sectionTitle("Scorecard", "Each row has its own scale; percentages share 0–100%."));
-  card.appendChild(legend());
-  for (const m of COMPARE_METRICS) {
-    if (m.group) { card.appendChild(el("div", "group-label", m.group)); continue; }
-    const a = d.ai.metrics[m.k] || {}, b = d.baseline.metrics[m.k] || {};
-    const max = m.fmt === "pct" ? 1 : Math.max(a.mean || 0, b.mean || 0) || 1;
-    const row = el("div", "mrow");
-    const lab = el("div", "mlabel");
-    lab.appendChild(el("div", null, m.label));
-    lab.appendChild(el("div", "muted small", m.hint));
-    row.appendChild(lab);
-    const bars = el("div", "mbars");
-    bars.appendChild(barLine("ai", a, max, m.fmt, `AI agent — ${m.label}`));
-    bars.appendChild(barLine("tools", b, max, m.fmt, `Free tools — ${m.label}`));
-    row.appendChild(bars);
-    row.appendChild(verdict(a.mean, b.mean, m));
-    card.appendChild(row);
-  }
-  return card;
-}
-
-function barLine(cls, cell, max, fmtName, tipLabel) {
-  const v = cell ? cell.mean : null;
-  const line = el("div", "bar-line");
-  const track = el("div", "bar-track");
-  const fill = el("div", "bar-fill " + cls);
-  fill.style.width = v == null ? "0" : `${Math.max(0, Math.min(1, v / max)) * 100}%`;
-  if (v != null && v > 0) fill.classList.add("nonzero");
-  track.appendChild(fill);
-  line.appendChild(track);
-  let txt = fmt(fmtName, v);
-  if (cell && cell.n > 1 && cell.std) txt += ` ±${fmtName === "pct" ? (cell.std * 100).toFixed(0) + " pts" : fmt(fmtName, cell.std)}`;
-  line.appendChild(el("span", "bar-val", txt));
-  line.dataset.tip = `${tipLabel}: ${txt}${cell && cell.n ? ` (n=${cell.n})` : ""}`;
-  return line;
-}
-
-function verdict(a, b, m) {
-  const box = el("div", "verdict");
-  if (a == null || b == null) { box.appendChild(el("span", "muted small", "n/a")); return box; }
-  const diff = a - b;
-  const eps = m.fmt === "pct" ? 0.005 : 1e-9;
-  if (Math.abs(diff) < eps) { box.appendChild(el("span", "muted small", "tie")); return box; }
-  const aiWins = m.better === "high" ? diff > 0 : diff < 0;
-  box.appendChild(swatch(aiWins ? "ai" : "tools"));
-  const mag = Math.abs(diff);
-  const delta = m.fmt === "pct" ? `${(mag * 100).toFixed(mag < 0.1 ? 1 : 0)} pts` : fmt(m.fmt, mag);
-  box.appendChild(el("span", null, `${aiWins ? "AI" : "Tools"} ahead by ${delta}`));
-  return box;
-}
-
-/* -- phase by phase -- */
-function renderPhaseTable(d) {
-  const card = el("div", "card section");
-  card.appendChild(sectionTitle("Phase by phase", "What each side used and produced in each phase. Output counts aren't scored, so more isn't automatically better."));
-  card.appendChild(legend());
-  const table = el("table", "ptable");
-  const thead = el("thead");
-  const hr = el("tr");
-  ["Phase", "Tools used", "Output", "Time", "Cost"].forEach((h) => hr.appendChild(el("th", null, h)));
-  thead.appendChild(hr);
-  table.appendChild(thead);
-  const tb = el("tbody");
-  const derived = new Set(d.derived_phases || []);
-  for (const ph of d.phase_order) {
-    const pa = d.ai.phases[ph] || {}, pb = d.baseline.phases[ph] || {};
-    const tr = el("tr");
-    const tdName = el("td", "ph-name");
-    tdName.appendChild(el("div", null, d.phase_titles[ph] || ph));
-    if (derived.has(ph)) {
-      const tag = el("span", "pill", "tools: derived");
-      tag.dataset.tip = (d.tools[ph] && d.tools[ph].derived) || "No free-tool equivalent; built from earlier phases' output";
-      tdName.appendChild(tag);
-    }
-    tr.appendChild(tdName);
-
-    const tdTools = el("td");
-    tdTools.appendChild(toolsLine("ai", pa.tools, pa.ran ? "no shell tools (file work only)" : "not run"));
-    const lineup = d.tools[ph] ? d.tools[ph].tools.map((t) => t.name) : [];
-    const used = pb.tools && pb.tools.length ? pb.tools : null;
-    tdTools.appendChild(toolsLine("tools", used,
-      !pb.ran ? "not run" : derived.has(ph) ? "derived" : lineup.length ? `none produced output (lineup: ${lineup.join(", ")})` : "—"));
-    tr.appendChild(tdTools);
-
-    const tdOut = el("td");
-    for (const met of d.phase_metrics[ph] || []) {
-      const va = pa.ran ? pa.counts[met.field] : null, vb = pb.ran ? pb.counts[met.field] : null;
-      const max = Math.max(va || 0, vb || 0) || 1;
-      const blk = el("div", "out-metric");
-      blk.appendChild(el("div", "muted small", met.label));
-      blk.appendChild(miniBar("ai", va, max, `AI agent — ${met.label}`));
-      blk.appendChild(miniBar("tools", vb, max, `Free tools — ${met.label}`));
-      tdOut.appendChild(blk);
-    }
-    tr.appendChild(tdOut);
-
-    const tdTime = el("td", "num-cell");
-    tdTime.appendChild(pairVals(fmt("dur", pa.duration_s), fmt("dur", pb.duration_s)));
-    tr.appendChild(tdTime);
-    const tdCost = el("td", "num-cell");
-    tdCost.appendChild(pairVals(pa.ran ? fmt("usd", pa.cost_usd) : "–", pb.ran ? fmt("usd", pb.cost_usd || 0) : "–"));
-    tr.appendChild(tdCost);
-    tb.appendChild(tr);
-  }
-  table.appendChild(tb);
-  const scroller = el("div", "table-scroll");
-  scroller.appendChild(table);
-  card.appendChild(scroller);
-  return card;
-}
-
-function toolsLine(cls, tools, emptyText) {
-  const line = el("div", "tools-line");
-  line.appendChild(swatch(cls));
-  if (tools && tools.length) {
-    tools.forEach((t) => {
-      const chip = el("span", "chip", t);
-      const info = state.tools && Object.values(state.tools).flatMap((p) => p.tools).find((x) => x.name === t);
-      if (info && info.purpose) chip.dataset.tip = info.purpose;
-      line.appendChild(chip);
-    });
-  } else {
-    line.appendChild(el("span", "muted small", emptyText));
-  }
-  return line;
-}
-
-function miniBar(cls, v, max, tip) {
-  const line = el("div", "mini-line");
-  const track = el("div", "bar-track mini");
-  const fill = el("div", "bar-fill " + cls + (v ? " nonzero" : ""));
-  fill.style.width = v == null ? "0" : `${(v / max) * 100}%`;
-  track.appendChild(fill);
-  line.appendChild(track);
-  const txt = v == null ? "not run" : fmt("num", v);
-  line.appendChild(el("span", "bar-val" + (v == null ? " muted" : ""), txt));
-  line.dataset.tip = `${tip}: ${txt}`;
-  return line;
-}
-
-function pairVals(a, b) {
-  const box = el("div", "pair-vals");
-  for (const [cls, v] of [["ai", a], ["tools", b]]) {
-    const r = el("div");
-    r.appendChild(swatch(cls));
-    r.appendChild(el("span", null, v));
-    box.appendChild(r);
-  }
-  return box;
-}
-
-/* -- coverage by OWASP category and difficulty -- */
-function renderCoverage(d) {
-  const cs = state.compare;
-  const card = el("div", "card section");
-  const title = sectionTitle("Coverage", "Share of graded vulnerabilities in each bucket that each side hit.");
-  const seg = el("div", "seg small-seg");
-  for (const [k, lab] of [["exploitation", "Exploited (oracle)"], ["detection", "Detected"]]) {
-    const b = el("button", "seg-btn" + (cs.cov === k ? " sel" : ""), lab);
-    b.type = "button";
-    b.onclick = () => { cs.cov = k; renderCompare(); };
-    seg.appendChild(b);
-  }
-  title.appendChild(seg);
-  card.appendChild(title);
-  card.appendChild(legend());
-
-  const exp = cs.cov === "exploitation";
-  const blocks = [
-    ["By OWASP Top 10 category", exp ? "by_owasp" : "detection_by_owasp", (k) => k === "(none)" ? "Uncategorized" : k.replace(/:2021/, "")],
-    ["By difficulty (1 = easiest)", exp ? "by_difficulty" : "detection_by_difficulty", (k) => `Difficulty ${k}`],
-  ];
-  const grid = el("div", "cov-grid");
-  for (const [heading, field, labelFn] of blocks) {
-    const col = el("div", "cov-col");
-    col.appendChild(el("div", "group-label", heading));
-    const A = d.ai[field], B = d.baseline[field];
-    if (!A || !B) {
-      col.appendChild(el("div", "muted small", "Not in these score files. Re-score the runs (Score button) to get it."));
-      grid.appendChild(col);
-      continue;
-    }
-    const keys = [...new Set([...Object.keys(A), ...Object.keys(B)])].sort();
-    for (const k of keys) {
-      const a = A[k] || { hit: 0, total: 0, rate: null }, b = B[k] || { hit: 0, total: 0, rate: null };
-      const total = a.total || b.total;
-      const row = el("div", "cov-row");
-      const lab = el("div", "cov-label");
-      lab.appendChild(el("span", null, labelFn(k)));
-      lab.appendChild(el("span", "muted small", `${total} graded`));
-      row.appendChild(lab);
-      const bars = el("div", "cov-bars");
-      bars.appendChild(covBar("ai", a, `AI agent — ${labelFn(k)}`));
-      bars.appendChild(covBar("tools", b, `Free tools — ${labelFn(k)}`));
-      row.appendChild(bars);
-      col.appendChild(row);
-    }
-    grid.appendChild(col);
-  }
-  card.appendChild(grid);
-  return card;
-}
-
-function covBar(cls, cell, tip) {
-  const line = el("div", "bar-line");
-  const track = el("div", "bar-track");
-  const fill = el("div", "bar-fill " + cls + (cell.hit ? " nonzero" : ""));
-  fill.style.width = `${(cell.rate || 0) * 100}%`;
-  track.appendChild(fill);
-  line.appendChild(track);
-  const txt = `${fmt("num", cell.hit)}/${fmt("num", cell.total)}`;
-  line.appendChild(el("span", "bar-val", txt));
-  line.dataset.tip = `${tip}: ${txt} (${pct(cell.rate)})`;
-  return line;
-}
-
-/* -- overlap: which vulnerabilities, by name -- */
-function renderOverlap(d) {
-  const cs = state.compare;
-  const card = el("div", "card section");
-  card.appendChild(sectionTitle(cs.cov === "exploitation" ? "Overlap — oracle-confirmed exploits" : "Overlap — detections",
-    "Which vulnerabilities each side reached. Switch with the Coverage toggle above."));
-  const ov = (d.overlap || {})[cs.cov] || { ai_only: [], both: [], baseline_only: [] };
-  const cols = el("div", "overlap-cols");
-  for (const [field, label, cls] of [["ai_only", "Only the AI", "ai"], ["both", "Both", "both"], ["baseline_only", "Only the tools", "tools"]]) {
-    const col = el("div", "overlap-col");
-    const h = el("div", "picker-head");
-    h.appendChild(swatch(cls));
-    h.appendChild(el("span", null, `${label} (${ov[field].length})`));
-    col.appendChild(h);
-    col.appendChild(vulnChips(ov[field], d.names));
-    cols.appendChild(col);
-  }
-  card.appendChild(cols);
-  const missed = d.missed_by_both || [];
-  const det = el("details", "missed");
-  det.appendChild(el("summary", null, `Missed by both (${missed.length}) — what neither approach caught`));
-  det.appendChild(vulnChips(missed, d.names));
-  card.appendChild(det);
-  return card;
-}
-
-function vulnChips(keys, names) {
-  const box = el("div", "chips");
-  if (!keys.length) { box.appendChild(el("span", "muted small", "none")); return box; }
-  for (const k of keys) {
-    const n = names[k];
-    const chip = el("span", "chip vuln-chip", n ? n.name : k);
-    chip.dataset.tip = n ? `${k} · ${n.owasp || "no OWASP category"} · difficulty ${n.difficulty}` : k;
-    box.appendChild(chip);
-  }
-  return box;
-}
-
-/* -- shared bits -- */
-function sectionTitle(text, sub) {
-  const t = el("div", "section-title");
-  const left = el("div");
-  left.appendChild(el("div", "ctitle", text));
-  if (sub) left.appendChild(el("div", "muted small", sub));
-  t.appendChild(left);
-  return t;
-}
-
-function legend() {
-  const lg = el("div", "legend");
-  for (const s of SIDES) {
-    const item = el("span", "legend-item");
-    item.appendChild(swatch(s.cls));
-    item.appendChild(el("span", null, s.label));
-    lg.appendChild(item);
-  }
-  return lg;
-}
-
-function swatch(cls) { return el("span", "swatch " + cls); }
-
 function kindBadge(kind) {
   const b = el("span", "kind " + (kind === "baseline" ? "tools" : "ai"), kind === "baseline" ? "TOOLS" : "AI");
   b.title = kind === "baseline" ? "Free-tools baseline run" : "AI agent run";
@@ -1108,15 +659,14 @@ function kindBadge(kind) {
 /* Score a run against the master vuln list (writes score.json). */
 function scoreButton(runId, scored, small) {
   const b = el("button", small ? "small-btn" : null, scored ? "Re-score" : "Score");
-  b.title = "Score this run against the master vulnerability list (needed to compare it)";
+  b.title = "Score this run against the master vulnerability list";
   b.onclick = async (e) => {
     e.preventDefault(); e.stopPropagation();
     b.disabled = true; b.textContent = "Scoring…";
     try {
       await api(`/api/runs/${encodeURIComponent(runId)}/score`, { method: "POST" });
       await loadRuns();
-      if (state.view === "compare") await loadCompare();
-      else await refreshDetail(false);
+      await refreshDetail(false);
     } catch (err) {
       b.disabled = false; b.textContent = scored ? "Re-score" : "Score";
       alert("Scoring failed: " + err.message);
@@ -1166,6 +716,8 @@ function pct(v) {
 function confCls(c) { return c === "high" ? "hi" : c === "medium" ? "med" : "low"; }
 function outcomeCls(o) { return o === "success" ? "ok" : o === "failure" ? "hi" : "med"; }
 function firstLine(s) { return (s || "").split("\n")[0].slice(0, 160); }
+function timeStr(iso) { const d = new Date(iso); return isNaN(d) ? "" : d.toTimeString().slice(0, 8); }
+function fmtDur(s) { s = Math.round(s); return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`; }
 function escapeHtml(s) { return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
 /* ---------------- boot ---------------- */
@@ -1185,22 +737,17 @@ async function boot() {
 
   // Deep link: open #<run>/<phase>/<tab> directly (handy for demos/bookmarks).
   const [hRun, hPhase, hTab] = location.hash.slice(1).split("/");
-  if (hRun === "compare") {
-    await openCompare(hPhase ? hPhase.split(",").filter(Boolean) : null);
-    startPolling();
-  } else if (hRun && state.runs.some((r) => r.run_id === hRun)) {
+  if (hRun && state.runs.some((r) => r.run_id === hRun)) {
     await selectRun(hRun, hPhase, hTab);
   } else {
     startPolling();
   }
   window.addEventListener("hashchange", () => {
     const [r, p, t] = location.hash.slice(1).split("/");
-    if (r === "compare") { if (state.view !== "compare") openCompare(p ? p.split(",").filter(Boolean) : null); }
-    else if (r && (r !== state.selectedRun || state.view !== "run")) selectRun(r, p, t);
+    if (r && r !== state.selectedRun) selectRun(r, p, t);
   });
 
   $("#btn-new").onclick = openModal;
-  $("#btn-compare").onclick = () => openCompare(state.compare.picked ? [...state.compare.picked] : null);
   document.querySelectorAll("#f-engine .seg-btn").forEach((b) => { b.onclick = () => setEngine(b.dataset.engine); });
   initTooltip();
   $("#btn-cancel").onclick = closeModal;

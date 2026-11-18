@@ -173,6 +173,7 @@ def write_markdown(entries, llm_top10):
         f'| Core vulnerabilities | {relevance["core"]} |',
         f'| OSINT (need information from outside the app) | {relevance["osint"]} |',
         f'| Meta (game mechanics, not vulnerabilities) | {relevance["meta"]} |',
+        f'| Disabled (feature not deployed in our build, e.g. the LLM chatbot) | {relevance["disabled"]} |',
         f'| LLM chatbot vulnerabilities (mapped to OWASP LLM Top 10) | {sum(bool(e["owasp_llm_top10"]) for e in entries)} |',
         f'| Switched off in Docker (safety mode) | {sum(not e["available_in_docker"] for e in entries)} |',
         f'| **Graded by default (core and available in Docker)** | **{len(graded)}** |',
