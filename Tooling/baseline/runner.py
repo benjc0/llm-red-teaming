@@ -235,11 +235,20 @@ def _run_tool(spec: ToolSpec, ctx: ToolContext, log) -> str | None:
         _stop_container(argv)
         _log(log, "tool_error", spec.name, str(exc))
         return None
-    if proc.returncode == 137 and argv[0] == "docker":
-        # 137 = SIGKILL; for a capped container that is almost always the
-        # memory limit. The VM is fine; only this tool's results are lost.
-        _log(log, "tool_error", spec.name,
-             "killed at its memory cap (exit 137); raise it with APT_TOOL_MEMORY=2g if the VM has room")
+    if proc.returncode != 0:
+        # Surface *why* a tool failed instead of just "exit N, 0 bytes".
+        # Some tools (nikto, retire) exit non-zero yet still write usable
+        # output, so this is a logged warning, not a hard failure: we fall
+        # through and let the parser salvage whatever landed on disk.
+        detail = (proc.stderr or proc.stdout or "").strip()
+        tail = " | ".join(detail.splitlines()[-3:])[-500:] if detail else "no stderr output"
+        if proc.returncode == 137 and argv[0] == "docker":
+            # 137 = SIGKILL; for a capped container that is almost always the
+            # memory limit. The VM is fine; only this tool's results are lost.
+            tail = ("killed at its memory cap (exit 137); raise it with "
+                    "APT_TOOL_MEMORY=2g if the VM has room"
+                    + (f" | {tail}" if detail else ""))
+        _log(log, "tool_error", spec.name, f"exit {proc.returncode}: {tail}")
     if spec.reads_stdout:
         out_path.write_text(proc.stdout, encoding="utf-8")
         raw = proc.stdout

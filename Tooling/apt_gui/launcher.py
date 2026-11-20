@@ -15,6 +15,7 @@ command line, exactly as the CLI expects (``APT_GRADING_TOKEN``).
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -162,6 +163,10 @@ class Launcher:
             proc = subprocess.Popen(
                 cmd, cwd=str(self.tooling_dir), env=env,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                # Own session/process group so Stop can signal the orchestrator
+                # AND its phase children, without ever touching the GUI server
+                # (which stays in its own group).
+                start_new_session=True,
             )
         except OSError as exc:
             raise LaunchError(f"Could not start orchestrator: {exc}") from exc
@@ -196,8 +201,35 @@ class Launcher:
     def stop(self, launch_id: str) -> bool:
         with self._lock:
             launch = self._launches.get(launch_id)
+        return self._terminate(launch)
+
+    def stop_run(self, run_id: str) -> bool:
+        """Stop a launch by its run id -- the GUI always knows the run id but
+        not the launch id, so this is what the Stop button calls."""
+        with self._lock:
+            launch = next(
+                (l for l in self._launches.values() if l.run_id == run_id), None
+            )
+        return self._terminate(launch)
+
+    @staticmethod
+    def _terminate(launch: Optional[Launch]) -> bool:
+        """Best-effort stop: SIGTERM the orchestrator's whole process group so
+        its current phase child (a docker client or a headless Claude run) goes
+        too. Returns False only when there is no such launch to stop."""
         if launch is None:
             return False
-        if launch.proc.poll() is None:
-            launch.proc.terminate()
+        proc = launch.proc
+        if proc.poll() is not None:
+            return True  # already finished; nothing to do, not an error
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (ProcessLookupError, PermissionError, OSError):
+            # No process group (e.g. start_new_session unsupported) -> fall back
+            # to signalling just the orchestrator process.
+            try:
+                proc.terminate()
+            except OSError:
+                return False
+        launch.error = "stopped from the GUI"
         return True

@@ -55,7 +55,9 @@ cd Tooling && python3 preflight.py
 # 4. Run the AI pentest (inside an isolated sandbox — see the warning below)
 python3 -m apt --target http://127.0.0.1:3000 --phases all --unattended
 
-# 5. Or the free-tools baseline, for comparison (restart the container first)
+# 5. Or the free-tools baseline, for comparison (restart the container first).
+#    Needs Docker + RAM headroom; on a ~4 GB host ZAP can OOM-kill the target
+#    mid-scan -- see Tooling/baseline/README.md "Requirements & known limitations".
 python3 -m baseline --target http://127.0.0.1:3000 --phases all
 
 # 6. Open the console: launch runs, watch them live, read and compare results

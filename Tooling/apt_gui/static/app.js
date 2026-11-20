@@ -146,6 +146,7 @@ function renderDetail() {
   head.appendChild(el("h1", null, d.run_id));
   head.appendChild(el("span", "badge " + d.status, d.status));
   const actions = el("span", "head-actions");
+  if (d.status === "running") actions.appendChild(stopButton(d.run_id));
   if (d.scorable) actions.appendChild(scoreButton(d.run_id, d.scored));
   head.appendChild(actions);
   c.appendChild(head);
@@ -653,6 +654,27 @@ async function launch() {
 function kindBadge(kind) {
   const b = el("span", "kind " + (kind === "baseline" ? "tools" : "ai"), kind === "baseline" ? "TOOLS" : "AI");
   b.title = kind === "baseline" ? "Free-tools baseline run" : "AI agent run";
+  return b;
+}
+
+/* Stop a running launch (SIGTERM to the orchestrator's process group). */
+function stopButton(runId) {
+  const b = el("button", "stop-btn", "Stop");
+  b.title = "Terminate this running orchestrator process";
+  b.onclick = async (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (!confirm("Stop this run? The orchestrator is terminated; findings produced so far are kept.")) return;
+    b.disabled = true; b.textContent = "Stopping…";
+    try {
+      const r = await api(`/api/runs/${encodeURIComponent(runId)}/stop`, { method: "POST" });
+      if (!r.stopped) alert("Nothing to stop — this run wasn't started from this GUI session (or already finished). You can stop it from a terminal instead.");
+      await loadRuns();
+      await refreshDetail(false);
+    } catch (err) {
+      b.disabled = false; b.textContent = "Stop";
+      alert("Stop failed: " + err.message);
+    }
+  };
   return b;
 }
 

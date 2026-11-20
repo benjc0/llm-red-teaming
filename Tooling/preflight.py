@@ -128,7 +128,13 @@ def main() -> int:
     # --- 5. Python packages for this interpreter ------------------------------
     check_python_packages()
 
-    # --- 6. Memory headroom (warn only) -------------------------------------
+    # --- 6. Free-tools baseline engine readiness (warn only) ----------------
+    # The AI engine needs none of this; skip the whole section if there's no
+    # intent to run the deterministic baseline.
+    check_docker()
+    check_baseline_tools()
+
+    # --- 7. Memory headroom (warn only) -------------------------------------
     check_memory()
 
     return _summary()
@@ -149,6 +155,58 @@ def check_python_packages() -> None:
              f"appear in the Compare view. {venv_hint}")
     else:
         ok("PyYAML available (runs score themselves)")
+
+
+def check_docker() -> None:
+    """The free-tools baseline runs most scanners (katana, ZAP, nuclei, sqlmap)
+    as Docker containers. The AI engine needs no Docker, so this only warns."""
+    docker = shutil.which("docker")
+    if docker is None:
+        warn("Docker not found: the free-tools baseline can't run its "
+             "containerized tools (katana, ZAP, nuclei, sqlmap). Not needed for "
+             "the AI engine.")
+        return
+    # 'docker ps' is a fast check that the daemon is up AND this user may reach
+    # it -- the two failure modes that silently broke baseline runs.
+    try:
+        res = _run([docker, "ps"], timeout=20)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        warn(f"Docker is installed but 'docker ps' could not run: {exc}")
+        return
+    if res.returncode == 0:
+        ok("Docker is installed and reachable (free-tools baseline can run).")
+        return
+    err = (res.stderr or "").lower()
+    if "permission denied" in err:
+        warn("Docker is installed but this user can't reach the daemon "
+             "(permission denied). Add yourself to the 'docker' group:")
+        print("           sudo usermod -aG docker \"$USER\"   # then log out and back in")
+    elif "cannot connect" in err or "daemon running" in err:
+        warn("Docker is installed but the daemon isn't running. Start it, e.g.:")
+        print("           sudo systemctl start docker")
+    else:
+        last = (res.stderr or "").strip().splitlines()
+        warn("Docker is installed but not usable: "
+             f"{last[-1][:160] if last else 'unknown error'}")
+
+
+def check_baseline_tools() -> None:
+    """Baseline tools that run natively (the rest come from Docker images):
+    nmap is checked above; whatweb, nikto and ffuf must be on PATH or the
+    baseline skips them. arjun/retire also degrade to a logged skip."""
+    for tool in ("whatweb", "nikto", "ffuf"):
+        if shutil.which(tool):
+            ok(f"Baseline tool present: {tool}")
+        else:
+            warn(f"Baseline tool missing: {tool} (runs natively; the baseline "
+                 f"skips it if absent). On Kali/Debian: sudo apt install {tool}")
+    # ffuf needs a wordlist; a missing one fails ffuf with exit 1.
+    wordlist = os.environ.get("APT_FFUF_WORDLIST", "/usr/share/wordlists/dirb/common.txt")
+    if os.path.isfile(wordlist):
+        ok(f"ffuf wordlist present: {wordlist}")
+    else:
+        warn(f"ffuf wordlist not found at {wordlist}. Install a wordlist (e.g. "
+             "'sudo apt install wordlists' or SecLists) or set APT_FFUF_WORDLIST.")
 
 
 def _meminfo() -> dict[str, int] | None:

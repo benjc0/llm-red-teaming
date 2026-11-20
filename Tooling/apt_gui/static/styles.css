@@ -58,6 +58,8 @@ button:hover { border-color: var(--accent); }
 button.primary { background: var(--accent-dim); border-color: var(--accent-dim); color: #fff; font-weight: 600; }
 button.primary:hover { background: var(--accent); }
 button.danger { border-color: var(--red); color: var(--red); }
+button.stop-btn { border-color: var(--red); color: var(--red); font-weight: 600; }
+button.stop-btn:hover { background: var(--red); color: #fff; border-color: var(--red); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* ---- layout ---- */

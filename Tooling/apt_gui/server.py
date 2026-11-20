@@ -18,6 +18,7 @@ Routes
   POST /api/runs/<id>/score                -> score a run against the master vuln list
   POST /api/launches                       -> start a run {target, phases, ...}
   POST /api/launches/<lid>/stop            -> terminate a running launch
+  POST /api/runs/<id>/stop                 -> terminate the launch for a run id
 """
 from __future__ import annotations
 
@@ -108,6 +109,10 @@ class Handler(BaseHTTPRequestHandler):
             if path.startswith("/api/launches/") and path.endswith("/stop"):
                 lid = path[len("/api/launches/"):-len("/stop")]
                 ok = self.ctx.launcher.stop(lid)
+                return self._json(200 if ok else 404, {"stopped": ok})
+            if path.startswith("/api/runs/") and path.endswith("/stop"):
+                run_id = path[len("/api/runs/"):-len("/stop")]
+                ok = self.ctx.launcher.stop_run(run_id)
                 return self._json(200 if ok else 404, {"stopped": ok})
             return self._json(404, {"error": "not found"})
         except BrokenPipeError:

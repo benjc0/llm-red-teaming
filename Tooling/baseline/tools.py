@@ -68,7 +68,8 @@ DEFAULT_MEMORY = "768m"
 TOOL_MEMORY = {
     "zap": "1536m",         # Java; the heap is sized from this cap (JAVA_TOOL_OPTIONS below)
     "zap_active": "1536m",
-    "nuclei": "1g",         # template engine; concurrency also lowered in its argv
+    "nuclei": "1536m",      # template engine; 1g OOMs (exit 137), 2g can starve the
+                            # target container on a small host -- 1.5g is the compromise
     "semgrep": "1536m",
 }
 
@@ -95,7 +96,9 @@ _ZAP_JAVA = ["-e", "JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=60"]
 
 
 def _mount(ctx: ToolContext) -> str:
-    return f"{ctx.workdir}:/work"
+    # Docker bind mounts require an ABSOLUTE host path; a relative one is read as
+    # a named volume ("invalid characters for a local volume name" -> exit 125).
+    return f"{os.path.abspath(ctx.workdir)}:/work"
 
 
 # --- recon -----------------------------------------------------------------
@@ -106,8 +109,9 @@ def _nmap_argv(ctx: ToolContext) -> list[str]:
 
 
 def _whatweb_argv(ctx: ToolContext) -> list[str]:
-    return [*_docker("whatweb"), _mount(ctx), "guardicore/whatweb",
-            "--log-json=/work/" + ctx.output_file, ctx.target]
+    # No maintained upstream Docker image (guardicore/whatweb is gone), so run
+    # natively; whatweb ships on Kali and most pentest distros.
+    return ["whatweb", f"--log-json={ctx.workdir}/{ctx.output_file}", ctx.target]
 
 
 # --- enumeration -----------------------------------------------------------
@@ -118,11 +122,13 @@ def _katana_argv(ctx: ToolContext) -> list[str]:
 
 
 def _ffuf_argv(ctx: ToolContext) -> list[str]:
-    # SecLists common wordlist ships in the ffuf image under /wordlists.
-    return [*_docker("ffuf"), _mount(ctx), "secsi/ffuf",
-            "-u", ctx.target.rstrip("/") + "/FUZZ",
-            "-w", "/wordlists/common.txt", "-mc", "200,201,204,301,302,307,401,403",
-            "-of", "json", "-o", "/work/" + ctx.output_file]
+    # ffuf ships on Kali; run it natively. The secsi/ffuf image no longer bundles
+    # a wordlist at /wordlists/common.txt, so point at a host list (override with
+    # APT_FFUF_WORDLIST on distros that keep it elsewhere).
+    wordlist = os.environ.get("APT_FFUF_WORDLIST", "/usr/share/wordlists/dirb/common.txt")
+    return ["ffuf", "-u", ctx.target.rstrip("/") + "/FUZZ",
+            "-w", wordlist, "-mc", "200,201,204,301,302,307,401,403",
+            "-of", "json", "-o", f"{ctx.workdir}/{ctx.output_file}"]
 
 
 # Written by the runner after Katana runs: same-origin URLs worth probing for
@@ -143,8 +149,12 @@ def _zap_argv(ctx: ToolContext) -> list[str]:
     # Baseline passive+spider scan. zap-baseline.py writes its report into the
     # container's work dir (/zap/wrk), so we mount the phase raw dir there (not
     # /work) and read back output_file. -I = don't fail the process on warnings.
-    return [*_docker("zap"), f"{ctx.workdir}:/zap/wrk/:rw", *_ZAP_JAVA, "zaproxy/zap-stable",
-            "zap-baseline.py", "-t", ctx.target, "-J", ctx.output_file, "-I"]
+    # -z "-silent": run ZAP offline -- no marketplace add-on downloads or
+    # telemetry at startup. Those runtime downloads are flaky (a hiccup aborts
+    # the scan with "Failed to access summary file", exit 3); -silent makes the
+    # scan deterministic using the image's baked-in release rules.
+    return [*_docker("zap"), f"{os.path.abspath(ctx.workdir)}:/zap/wrk/:rw", *_ZAP_JAVA, "zaproxy/zap-stable",
+            "zap-baseline.py", "-t", ctx.target, "-J", ctx.output_file, "-I", "-z", "-silent"]
 
 
 def _nuclei_argv(ctx: ToolContext) -> list[str]:
@@ -156,12 +166,14 @@ def _nuclei_argv(ctx: ToolContext) -> list[str]:
 
 
 def _nikto_argv(ctx: ToolContext) -> list[str]:
-    return [*_docker("nikto"), _mount(ctx), "sullo/nikto",
-            "-h", ctx.target, "-Format", "json", "-output", "/work/" + ctx.output_file]
+    # No maintained upstream Docker image (sullo/nikto is gone), so run natively;
+    # nikto ships on Kali and most pentest distros.
+    return ["nikto", "-h", ctx.target, "-Format", "json",
+            "-output", f"{ctx.workdir}/{ctx.output_file}"]
 
 
 def _semgrep_argv(ctx: ToolContext) -> list[str]:
-    return [*_docker("semgrep"), f"{ctx.source_dir}:/src", "returntocorp/semgrep", "semgrep",
+    return [*_docker("semgrep"), f"{os.path.abspath(ctx.source_dir)}:/src", "returntocorp/semgrep", "semgrep",
             "--config", "p/owasp-top-ten", "--config", "p/javascript",
             "--json", "--output", "/work/" + ctx.output_file, "/src"]
 
@@ -192,25 +204,30 @@ def _sqlmap_argv(ctx: ToolContext) -> list[str]:
 def _zap_active_argv(ctx: ToolContext) -> list[str]:
     # Full scan = spider + ACTIVE scan (fires attack payloads). -m caps spider
     # minutes; -I keeps warnings from failing the process. Same JSON as baseline.
-    return [*_docker("zap_active"), f"{ctx.workdir}:/zap/wrk/:rw", *_ZAP_JAVA, "zaproxy/zap-stable",
-            "zap-full-scan.py", "-t", ctx.target, "-m", "3", "-J", ctx.output_file, "-I"]
+    # -z "-silent": offline, no marketplace downloads mid-scan (see _zap_argv).
+    # SQLi/XSS active rules are in the baked-in release ascanrules, not beta.
+    return [*_docker("zap_active"), f"{os.path.abspath(ctx.workdir)}:/zap/wrk/:rw", *_ZAP_JAVA, "zaproxy/zap-stable",
+            "zap-full-scan.py", "-t", ctx.target, "-m", "3", "-J", ctx.output_file, "-I", "-z", "-silent"]
 
 
 REGISTRY: dict[Phase, list[ToolSpec]] = {
     Phase.recon: [
         ToolSpec("nmap", Phase.recon, _nmap_argv, "nmap.xml", nmap.parse, 300, native=True),
-        ToolSpec("whatweb", Phase.recon, _whatweb_argv, "whatweb.json", whatweb.parse, 180),
+        ToolSpec("whatweb", Phase.recon, _whatweb_argv, "whatweb.json", whatweb.parse, 180,
+                 native=True),
     ],
     Phase.enumeration: [
         ToolSpec("katana", Phase.enumeration, _katana_argv, "katana.jsonl", katana.parse, 300),
-        ToolSpec("ffuf", Phase.enumeration, _ffuf_argv, "ffuf.json", ffuf.parse, 300),
+        ToolSpec("ffuf", Phase.enumeration, _ffuf_argv, "ffuf.json", ffuf.parse, 300,
+                 native=True),
         ToolSpec("arjun", Phase.enumeration, _arjun_argv, "arjun.json", arjun.parse, 600,
                  native=True),
     ],
     Phase.vuln_assessment: [
         ToolSpec("zap", Phase.vuln_assessment, _zap_argv, "zap.json", zap.parse, 900),
         ToolSpec("nuclei", Phase.vuln_assessment, _nuclei_argv, "nuclei.jsonl", nuclei.parse, 600),
-        ToolSpec("nikto", Phase.vuln_assessment, _nikto_argv, "nikto.json", nikto.parse, 600),
+        ToolSpec("nikto", Phase.vuln_assessment, _nikto_argv, "nikto.json", nikto.parse, 600,
+                 native=True),
         ToolSpec("retirejs", Phase.vuln_assessment, _retirejs_argv, "retire.json",
                  retirejs.parse, 300, native=True),
         ToolSpec("semgrep", Phase.vuln_assessment, _semgrep_argv, "semgrep.json",

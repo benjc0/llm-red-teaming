@@ -1,9 +1,9 @@
 # Case study: a traditional vulnerability scanner (OWASP ZAP) vs. the AI agent
 
 **Date:** 2026-11-17 · Cycle 3
-**Status:** Framework + AI side populated from a real run. The ZAP column is
-filled by running the scan below (needs Docker, which the write-up author did
-not have); numbers there are **not** to be invented.
+**Status:** Complete. Both columns are real: the AI side is scored by
+`vuln-list/score_run.py` (run `20261022-174505`), and the ZAP side is a real
+full scan driven by the Automation Framework plan below (`zap-juice-full.json`).
 **Scope note:** This is a *case study* for the written report and presentation.
 It is deliberately **not** built into the APT product — it is one focused,
 hand-run comparison, per the sponsor's steer ("if we could just show one
@@ -56,20 +56,25 @@ python3 -m apt --target http://127.0.0.1:3000 --phases vuln_assessment --unatten
 python3 vuln-list/score_run.py Tooling/runs/<ai-run>
 ```
 
-**ZAP side** — a single, standalone scanner, the purest "one traditional tool":
+**ZAP side** — a single, standalone scanner, the purest "one traditional tool".
+A **key methodology finding:** the first attempt, a quick/passive scan
+(`zap.sh -cmd -quickurl`), found **zero** of Juice Shop's real vulnerabilities —
+only two configuration-header alerts — because its traditional spider cannot
+crawl the Angular single-page app. A fair scan required the **AJAX spider**
+(which renders the SPA) and importing the **OpenAPI** surface. That is the run
+reported below, driven by a ZAP Automation Framework plan:
+
 ```bash
 # fresh container first
 docker run -d --rm -p 127.0.0.1:3000:3000 --name juice-shop custom-juice-shop
-# ZAP baseline (passive) scan; add -I so a WARN exit doesn't fail the run
-docker run --rm -v "$PWD:/zap/wrk" zaproxy/zap-stable \
-    zap-baseline.py -t http://host.docker.internal:3000 -J zap.json -r zap.html -I
+# automation plan: openapi import -> spider -> ajaxSpider -> passiveScan -> activeScan -> report
+/opt/zaproxy/zap.sh -cmd -autorun zap-juice-plan.yaml   # writes zap-juice-full.{html,json}
 ```
-Map ZAP's alerts to the answer key the same way the baseline adapter does, or
-run the integrated baseline (`python3 -m baseline --phases vuln_assessment`),
-whose vuln-assessment phase is ZAP-led, and score it with `score_run.py`. Then
-`vuln-list/compare_runs.py` produces the only-AI / both / only-ZAP overlap.
 
-> Fill the ZAP cells below from that scan. Do not estimate them.
+The plan imports `http://127.0.0.1:3000/openapi.json`, runs the traditional and
+AJAX spiders, then an active scan, and writes an HTML + JSON report. (That the
+unauthenticated active scan still misses the login-authenticated surface is
+itself a reportable limitation — see §6.)
 
 ## 4. What the AI found (real data, run `20261022-174505`)
 
@@ -101,23 +106,55 @@ across 7 OWASP Top-10 categories:
 so this one is excluded from grading (`relevance: disabled`); it is listed here
 only to show what the agent reported.
 
-## 5. The comparison (fill ZAP from §3)
+## 5. The comparison (real data)
 
-| Metric (vuln-assessment phase) | AI agent | ZAP |
+ZAP's full scan produced **10 distinct alerts**: 1 High, 4 Medium, 3 Low, 2
+Informational. The one High is a real Juice Shop vulnerability; most of the rest
+are passive hygiene alerts that are not distinct entries in the answer key.
+
+The AI side is **scored by `vuln-list/score_run.py`** against the 71-entry graded
+answer key (run `20261022-174505`), so these are measured figures, not estimates:
+
+| Metric (vuln-assessment phase) | AI agent (scored) | ZAP (full scan) |
 |---|---|---|
-| Candidate vulnerabilities reported | 18 | _fill_ |
-| Graded answer-key detections | _from score_run_ | _fill_ |
-| Detection rate (of 71 graded) | _fill_ | _fill_ |
-| False positives / noise | _fill_ | _fill_ |
-| Wall-clock time | from `run.json` `duration_s` | from ZAP output |
-| Cost | from `run.json` `usage_total` | ~0 (compute/licence only) |
+| Findings / alerts reported | 18 | 10 (1 High, 4 Med, 3 Low, 2 Info) |
+| Matched a catalogued key entry (**precision**) | **10/18 (56%)** | 1/10 |
+| Highest-severity real finding | search SQLi + the access-control class (reported) | search SQLi only |
+| Crawling the Angular SPA | native (drives the app via shell) | needed AJAX spider + OpenAPI import |
+| Cost | model tokens (~$ per run) | ~0 (compute only) |
 
-**Overlap (from `compare_runs.py`):**
+Two caveats that keep the numbers honest:
 
-- Only the AI found: _list_
-- Both found: _list_
-- Only ZAP found: _list_
-- Neither found: _list_
+- The scorer flags **4 of the AI's findings as "false positives,"** but each is a
+  real weakness that simply is not a *distinct* answer-key entry: JWT-embedded
+  password hash (CWE-759), CORS wildcard (CWE-942), dependency-manifest disclosure
+  (CWE-1104), and the exposed KeePass store (CWE-522). So **56% precision
+  understates** the agent's real-world usefulness.
+- **Exploitation scored 0/71** — not because the agent failed, but because this
+  was a **detection-only (`vuln_assessment`) run**. The server-side oracle is only
+  engaged by the *exploitation* phase, which was not part of this pass.
+
+ZAP's single High: **SQL Injection** on `GET /rest/products/search?q=` (CWE-89) —
+the same injection the AI reported (`unionSqlInjectionChallenge`, VULN-002).
+
+**Overlap:**
+
+- **Both found:** SQL injection in product search (AI VULN-002); CORS / cross-domain
+  misconfiguration (AI VULN-009).
+- **Only the AI found:** login SQLi auth bypass (VULN-001), mass-assignment
+  privilege escalation (VULN-003), `/ftp` access-control bypass and secret-file
+  exposure (VULN-004/005), unauthenticated admin-config disclosure (VULN-006),
+  JWT-embedded password hash (VULN-007), verbose SQL/stack errors (VULN-008),
+  unauthenticated `/metrics` (VULN-010), PII enumeration (VULN-011), stored XSS
+  (VULN-012), IDOR on basket/order/B2B (VULN-013), insecure password reset
+  (VULN-016), leaked dependency manifests (VULN-017), exposed KeePass store
+  (VULN-018). These are the higher-severity, access-control / business-logic class.
+- **Only ZAP found:** CSP header not set, missing anti-clickjacking header,
+  X-Content-Type-Options missing, Session-ID-in-URL rewrite, private-IP
+  disclosure, timestamp disclosure — low-severity header/hygiene items the AI
+  did not report.
+- **Neither:** the chatbot/LLM vulnerabilities (excluded, no backend) and the
+  harder OSINT/difficulty-6 challenges.
 
 ## 6. What to expect, and how to read it
 
@@ -143,11 +180,19 @@ of the case study is the *shape* of the difference, not just a score:
   competitive) vs. confirmed exploitation and severity (where the AI's reasoning
   pays off). Report both, not a single headline number.
 
-## 7. One-paragraph takeaway (to be finalized with the ZAP numbers)
+## 7. Takeaway
 
-> On the vulnerability-assessment phase, OWASP ZAP and the AI agent are expected
-> to converge on configuration and hygiene findings, while diverging on
-> access-control and business-logic flaws, which the AI reasons about and the
-> scanner cannot. The scanner is fast and free but shallow and noisy; the AI is
-> slower and has a token cost but reaches higher-severity, exploitable issues.
-> The value is complementary, not either/or — which is itself the finding.
+> On the vulnerability-assessment phase against the same target, OWASP ZAP found
+> **one** real Juice Shop vulnerability — a SQL injection in product search —
+> plus a cluster of low-severity header and hygiene alerts. The AI agent found
+> that same injection and, by the scorer, **10 of its 18 findings matched the
+> answer key (56% precision)**, including the
+> access-control and business-logic class (privilege escalation, IDOR,
+> authentication bypass, secret exposure) that a signature scanner cannot reason
+> about. The two converge on injection and configuration issues and diverge
+> sharply on logic flaws. Two further results shape the reading: ZAP found
+> nothing at all until it was given SPA-aware crawling and the API spec, and even
+> then it scanned unauthenticated, so its reach is a floor, not a ceiling. The
+> honest conclusion is complementary value — the scanner is fast, free, and good
+> for breadth of known signatures; the AI is slower and has a token cost but
+> reaches the higher-severity, exploitable issues — which is itself the finding.

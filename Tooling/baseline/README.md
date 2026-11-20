@@ -54,6 +54,39 @@ python3 ../vuln-list/score_run.py runs/<baseline-id> --mode black-box
 python3 ../vuln-list/compare_runs.py runs/<ai-id> runs/<baseline-id>
 ```
 
+## Requirements & known limitations
+
+- **Docker access.** Most tools run as pinned containers, so your user needs to
+  reach the Docker daemon (be in the `docker` group, or run with `sudo`). A run
+  with no Docker access fails every containerized tool with exit 126.
+- **A few tools run natively**, not via Docker: `nmap`, `whatweb`, `nikto`,
+  `ffuf`, `arjun`, `retire`. They must be on `PATH` (Kali ships the first four;
+  `arjun`/`retire` are skipped with a log note if absent). `ffuf` uses a host
+  wordlist — override with `APT_FFUF_WORDLIST` if yours isn't at
+  `/usr/share/wordlists/dirb/common.txt`.
+- **Memory — the most common cause of a "ZAP found nothing" run.** ZAP (the
+  passive *and* active scans) plus nuclei are memory-hungry, and they run
+  **alongside** the live target container. On a small host (~4 GB RAM) the
+  kernel's OOM killer can take out the **target** (Juice Shop) mid-scan, because
+  the scanner containers are memory-capped but the target is not. When that
+  happens you'll see ZAP exit 3 — `Job spider failed … Connection refused`
+  followed by `Failed to access summary file` — and every later tool reports
+  little or nothing, because the target is simply gone (and `--rm` removes the
+  dead container, so `docker ps` looks empty). This is an **environment limit,
+  not a tool bug**. Mitigations, best first:
+  - Run on a host with **≥ 8 GB RAM** (comfortably fits ZAP + nuclei + target).
+  - Protect the target from the OOM killer so a scanner is sacrificed instead:
+    start Juice Shop with `--oom-score-adj=-800` (and keep `--rm`).
+  - Lower the scanner caps with `APT_TOOL_MEMORY` (e.g. `1g`), accepting that
+    nuclei may then OOM itself (exit 137) instead.
+  - Run the heavy ZAP active scan on its own rather than in a full `--phases all`
+    pass. The authoritative ZAP result for the AI-vs-tools comparison is the
+    standalone ZAP Automation Framework scan documented in the case study, not
+    this in-pipeline step.
+- **Diagnosing a failed tool.** The runner logs each tool's exit code *and its
+  stderr* on any non-zero exit (see the phase's `logs/<phase>.jsonl` or the GUI
+  Activity tab), so a failure says *why* instead of just "0 bytes".
+
 ## Oracle attribution
 
 Tools don't know Juice Shop challenge keys, so the runner snapshots the
