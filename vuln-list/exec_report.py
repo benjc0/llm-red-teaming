@@ -112,6 +112,79 @@ def severity_of(entry: Mapping[str, Any], proven: bool) -> str:
     return "Low"
 
 
+# --- plain-language remediation ------------------------------------------
+#
+# The technical reference (an OWASP cheat-sheet link, the catalog's fix note,
+# or the agent's own playbook text) is written for a developer. For a
+# non-technical reader the report also shows a plain-language "how to fix it"
+# line: one or two jargon-free sentences saying what has to change to remove
+# the issue. These are keyed first by challenge, then by OWASP category, so a
+# real run's findings outside this list still get a sensible plain fix.
+
+_PLAIN_FIX_BY_KEY = {
+    "loginAdminChallenge":
+        "Stop pasting the typed-in email straight into the login's database "
+        "query. Use parameterized queries so special characters can't turn the "
+        "login box into a database command — that is what lets an attacker log in "
+        "as the administrator.",
+    "directoryListingChallenge":
+        "Turn off the public file listing on the exposed folder and take the "
+        "sensitive files out of it. Anything that must stay should sit behind a "
+        "login, not be openly browsable and downloadable.",
+    "errorHandlingChallenge":
+        "Show visitors a plain, generic error message and keep the detailed "
+        "technical error in private server logs, so error pages stop revealing how "
+        "the system is built.",
+    "adminSectionChallenge":
+        "Check the user's role on the server before serving the admin area, so a "
+        "regular user cannot reach it just by typing its web address.",
+    "exposedMetricsChallenge":
+        "Require a login for the internal metrics page, or move it off the public "
+        "site entirely, so outsiders cannot read internal system statistics.",
+}
+
+_PLAIN_FIX_BY_OWASP = {
+    "A01": "Check the user's permissions on the server for every sensitive page and "
+           "action, so people cannot reach data or features they are not allowed to "
+           "simply by changing a web address or request.",
+    "A02": "Protect sensitive data with strong, current encryption both in transit "
+           "and when stored, and stop relying on weak or outdated methods.",
+    "A03": "Never build database queries or system commands by pasting in whatever "
+           "the user typed. Use parameterized queries and validate input so it "
+           "cannot be run as code.",
+    "A04": "Add the safeguard the feature is missing — a limit, a validation step, "
+           "or an approval — so it cannot be abused the way it currently can.",
+    "A05": "Tighten the configuration: turn off debug and developer features in "
+           "production, remove exposed files and endpoints, and apply secure "
+           "defaults.",
+    "A06": "Update or replace the outdated third-party component with a patched "
+           "version, and keep dependencies current from now on.",
+    "A07": "Strengthen sign-in and account security: enforce strong passwords, slow "
+           "down guessing, and lock down password-reset and session handling.",
+    "A08": "Verify that code, updates, and data have not been tampered with (using "
+           "signatures or integrity checks) before the system trusts them.",
+    "A09": "Restrict access to internal logs and metrics, and make sure security "
+           "events are recorded and actually monitored.",
+    "A10": "Limit and validate the addresses the server is allowed to contact, so "
+           "it cannot be tricked into reaching internal systems.",
+}
+
+_PLAIN_FIX_DEFAULT = (
+    "Have a developer confirm the weakness and apply the standard fix for this "
+    "class of issue; see the technical reference for the specifics."
+)
+
+
+def plain_fix(entry: Mapping[str, Any], key: str) -> str:
+    """Return a short, non-technical 'how to fix it' sentence for a finding."""
+    if key in _PLAIN_FIX_BY_KEY:
+        return _PLAIN_FIX_BY_KEY[key]
+    code = _owasp_code(entry)
+    if code and code in _PLAIN_FIX_BY_OWASP:
+        return _PLAIN_FIX_BY_OWASP[code]
+    return _PLAIN_FIX_DEFAULT
+
+
 # --- input loading --------------------------------------------------------
 
 
@@ -198,6 +271,7 @@ def build_findings(run_dir: Path, result: Mapping[str, Any]) -> list[dict[str, A
             "impact": impact_tier(entry),
             "reference": ref,
             "agent_recommendation": (rec_for_key.get(key) or {}).get("recommendation"),
+            "plain_fix": plain_fix(entry, key),
         })
 
     # Rank: severity band, then proven before potential, then impact tier.
@@ -358,7 +432,9 @@ def render_markdown(
         "",
         "Findings are ordered by business risk — highest first. *Proven* means the "
         "engagement exploited the issue end to end; *potential* means it was identified "
-        "but not confirmed in this run. Address proven, higher-severity items first.",
+        "but not confirmed in this run. Address proven, higher-severity items first. "
+        "Each finding lists a plain-language fix; the technical reference is kept for "
+        "the engineering team.",
         "",
     ])
     if not findings:
@@ -380,18 +456,10 @@ def render_markdown(
             lines.append(
                 f"- **Exploitation difficulty:** {finding['difficulty']}/6"
             )
-            recommendation = finding.get("agent_recommendation")
-            if recommendation:
-                lines.append(f"- **Recommended remediation:** {recommendation}")
-            elif finding.get("reference"):
-                lines.append(
-                    f"- **Recommended remediation:** {finding['reference']}"
-                )
-            else:
-                lines.append(
-                    "- **Recommended remediation:** See the technical report for "
-                    "detailed guidance."
-                )
+            lines.append(f"- **How to fix it:** {finding['plain_fix']}")
+            technical = finding.get("agent_recommendation") or finding.get("reference")
+            if technical:
+                lines.append(f"- **Technical reference:** {technical}")
             lines.append("")
 
     # What a human would add
@@ -477,8 +545,12 @@ def render_html(
     for i, f in enumerate(findings, 1):
         status = "Proven exploitable" if f["proven"] else "Potential"
         status_cls = "proven" if f["proven"] else "potential"
-        rec = f.get("agent_recommendation") or f.get("reference") or \
-            "See the technical report for detailed guidance."
+        technical = f.get("agent_recommendation") or f.get("reference")
+        ref_line = (
+            f'\n        <div class="finding-ref"><strong>Technical reference:</strong> '
+            f'{esc(technical)}</div>'
+            if technical else ""
+        )
         rows.append(f"""
       <div class="finding">
         <div class="finding-head">
@@ -488,7 +560,7 @@ def render_html(
           <span class="status {status_cls}">{status}</span>
         </div>
         <div class="finding-meta">{esc(f['owasp'] or f['category'])} &middot; exploitation difficulty {esc(f['difficulty'])}/6</div>
-        <div class="finding-rec"><strong>Remediation:</strong> {esc(rec)}</div>
+        <div class="finding-fix"><strong>How to fix it:</strong> {esc(f['plain_fix'])}</div>{ref_line}
       </div>""")
 
     missed = _missed_keys(result)
@@ -557,7 +629,8 @@ def render_html(
   .status.proven {{ background:#fdecec; color:#b4232a; }}
   .status.potential {{ background:#eef1f4; color:var(--muted); }}
   .finding-meta {{ color:var(--muted); font-size:13px; margin:6px 0 8px 34px; }}
-  .finding-rec {{ font-size:14px; margin-left:34px; }}
+  .finding-fix {{ font-size:14px; margin-left:34px; }}
+  .finding-ref {{ font-size:12.5px; color:var(--muted); margin:6px 0 0 34px; }}
   ul.residual {{ background:var(--card); border:1px solid var(--line); border-radius:10px;
     padding:14px 14px 14px 32px; margin:0; }}
   ul.residual li {{ margin:4px 0; }}
@@ -606,7 +679,8 @@ def render_html(
 
   <h2>Priority remediation roadmap</h2>
   <p>Ordered by business risk — highest first. Address proven, higher-severity items
-     before lower ones.</p>
+     before lower ones. Each finding shows a plain-language fix; the technical
+     reference is kept for the engineering team.</p>
   {''.join(rows) if rows else '<p><em>No answer-key-backed findings were produced for this run.</em></p>'}
 
   <h2>Residual risk — what this assessment did not cover</h2>
